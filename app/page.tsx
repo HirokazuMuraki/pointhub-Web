@@ -7,7 +7,6 @@ import { generateClient } from "aws-amplify/api";
 import { type Schema } from "../amplify/data/resource";
 import outputs from "../amplify_outputs.json";
 
-// 各種コンポーネントのインポート
 import { Sidebar, Footer, MobileNav } from "./components/Layout";
 import { PolicyModal, UserHistoryModal } from "./components/Modals";
 import { ExchangeForm } from "./features/Exchange";
@@ -33,83 +32,68 @@ function LoggedInApp({ user, signOut }: { user: any, signOut: any }) {
   const [allUsers, setAllUsers] = useState<Schema["UserProfile"]["type"][]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  // UI制御State
   const [viewingUser, setViewingUser] = useState<{email: string, name: string} | null>(null);
   const [policyContent, setPolicyContent] = useState<{title: string, content: string} | null>(null);
 
+  const userEmail = user?.signInDetails?.loginId || user?.username || "";
   const isAdmin = profile?.role === "ADMIN";
-  const userEmail = user.signInDetails.loginId;
 
   useEffect(() => {
     if (!user || !client.models) return;
     const subs: any[] = [];
     
-    // データ購読 (Subscription)
     subs.push(client.models.ServiceMaster.observeQuery().subscribe({ next: ({ items }) => setServices([...items]) }));
-    subs.push(client.models.ExchangeTransaction.observeQuery().subscribe({
-      next: ({ items }) => {
-        const sorted = [...items].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setTransactions(isAdmin ? sorted : sorted.filter(t => t.userEmail === userEmail));
-      }
-    }));
+
     subs.push(client.models.UserProfile.observeQuery({ filter: { email: { eq: userEmail } } }).subscribe({
       next: ({ items }) => {
         if (items.length > 0) {
-          setProfile(items[0]);
+          const p = items[0];
+          setProfile(p);
+          
+          const transactionSub = client.models.ExchangeTransaction.observeQuery({
+             filter: p.role === "ADMIN" ? undefined : { userEmail: { eq: userEmail } }
+          }).subscribe({
+            next: ({ items }) => {
+              const sorted = [...items].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+              setTransactions(sorted);
+            }
+          });
+          subs.push(transactionSub);
           setIsLoading(false);
         } else {
           client.models.UserProfile.create({ 
             email: userEmail, 
             role: userEmail.includes("admin") ? "ADMIN" : "USER", 
             isDisabled: false 
-          });
+          }).then(() => setIsLoading(false));
         }
       }
     }));
-    if (isAdmin) { subs.push(client.models.UserProfile.observeQuery().subscribe({ next: ({ items }) => setAllUsers([...items]) })); }
+
+    subs.push(client.models.UserProfile.observeQuery().subscribe({ next: ({ items }) => setAllUsers([...items]) }));
     
     return () => subs.forEach(s => s?.unsubscribe());
-  }, [user, isAdmin, userEmail]);
+  }, [user, userEmail]);
 
   if (isLoading) return <div className="h-screen flex items-center justify-center font-bold">読み込み中...</div>;
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-slate-50 font-sans text-slate-900">
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} name={profile?.name} email={userEmail} signOut={signOut} isAdmin={isAdmin} />
-      
       <main className="flex-grow p-4 md:p-10 max-w-5xl mx-auto w-full pb-48">
         <header className="md:hidden flex justify-between items-center mb-8 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
           <h1 className="text-xl font-black text-blue-600 italic">POINT HUB</h1>
-          <p className="text-xs font-black text-slate-900">{profile?.name || "User"}</p>
+          <p className="text-xs font-black text-slate-900">{profile?.name || userEmail}</p>
         </header>
 
-        {/* コンテンツの出し分け */}
-        {activeTab === "home" && (
-          <ExchangeForm services={services} client={client} userEmail={userEmail} onSuccess={() => setActiveTab("history")} styles={styles} />
-        )}
-
-        {activeTab === "history" && (
-          <HistoryList transactions={transactions} styles={styles} />
-        )}
-
-        {activeTab === "userSettings" && (
-          <UserSettings services={services} client={client} userEmail={userEmail} styles={styles} />
-        )}
-
-        {activeTab === "profile" && (
-          <ProfileSettings profile={profile} client={client} styles={styles} />
-        )}
-
-        {activeTab === "admin" && isAdmin && (
-          <AdminPanel services={services} allUsers={allUsers} transactions={transactions} client={client} styles={styles} setViewingUser={setViewingUser} />
-        )}
-
+        {activeTab === "home" && <ExchangeForm services={services} client={client} userEmail={userEmail} onSuccess={() => setActiveTab("history")} styles={styles} />}
+        {activeTab === "history" && <HistoryList transactions={transactions} allUsers={allUsers} isAdmin={isAdmin} styles={styles} />}
+        {activeTab === "userSettings" && <UserSettings services={services} client={client} userEmail={userEmail} styles={styles} />}
+        {activeTab === "profile" && <ProfileSettings profile={profile} client={client} styles={styles} />}
+        {activeTab === "admin" && isAdmin && <AdminPanel services={services} allUsers={allUsers} transactions={transactions} client={client} styles={styles} setViewingUser={setViewingUser} />}
         <Footer setPolicyContent={setPolicyContent} />
       </main>
-
       <MobileNav activeTab={activeTab} setActiveTab={setActiveTab} isAdmin={isAdmin} />
-
-      {/* モーダル類 */}
       <PolicyModal content={policyContent} onClose={() => setPolicyContent(null)} />
       <UserHistoryModal viewingUser={viewingUser} transactions={transactions} onClose={() => setViewingUser(null)} />
     </div>
