@@ -1,53 +1,111 @@
 import React from "react";
-import { POLICIES } from "../constants";
 
-export const Sidebar = ({ activeTab, setActiveTab, name, email, signOut, isAdmin }: any) => (
-  <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 p-6 sticky top-0 h-screen z-20">
-    <h1 className="text-2xl font-black text-blue-600 italic mb-4">POINT HUB</h1>
-    <div className="mb-8 p-4 bg-gradient-to-br from-slate-50 to-blue-50 rounded-2xl border border-blue-100">
-      <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Authenticated</p>
-      <p className="font-black text-slate-800 truncate text-base">ようこそ、<br/>{name || email} 様</p>
-    </div>
-    <nav className="flex flex-col gap-2 flex-grow">
-      {[
-        { id: "home", label: "🔄 交換実行" },
-        { id: "history", label: "📋 履歴一覧" },
-        { id: "userSettings", label: "🔑 交換先設定" },
-        { id: "profile", label: "👤 プロフィール" },
-      ].map((tab) => (
-        <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`p-4 rounded-xl font-bold text-left transition-all ${activeTab === tab.id ? "bg-blue-600 text-white shadow-lg shadow-blue-200" : "text-slate-400 hover:bg-slate-50"}`}>
-          {tab.label}
+export const Sidebar = ({ activeTab, setActiveTab, name, email, signOut, isAdmin }: any) => {
+  const menuItems = [
+    { id: "home", label: "ポイント交換", icon: "💎" },
+    { id: "history", label: "履歴一覧", icon: "📋" },
+    { id: "userSettings", label: "連携先設定", icon: "🔑" },
+    { id: "profile", label: "プロフィール", icon: "👤" },
+  ];
+
+  return (
+    <aside className="hidden md:flex flex-col w-72 bg-white border-r border-slate-100 h-screen sticky top-0 overflow-hidden">
+      {/* 1. ロゴエリア */}
+      <div className="p-8 pb-4">
+        <h1 className="text-3xl font-black text-blue-600 italic tracking-tighter">POINT HUB</h1>
+      </div>
+
+      {/* 2. ユーザー情報エリア */}
+      <div className="px-8 pb-6 mb-4 border-b border-slate-50">
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Authenticated</p>
+        <p className="font-black text-slate-800 truncate text-base leading-tight">
+          ようこそ、<br/>{name || "User"} 様
+        </p>
+        <p className="text-[10px] text-slate-400 truncate font-medium mt-1">{email}</p>
+      </div>
+
+      {/* 3. スクロール可能なメニューエリア */}
+      <div className="flex-grow overflow-y-auto px-4 space-y-2 pb-4 scrollbar-hide">
+        {menuItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setActiveTab(item.id)}
+            className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black transition-all ${
+              activeTab === item.id ? "bg-blue-600 text-white shadow-lg shadow-blue-200 scale-105" : "text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+            }`}
+          >
+            <span className="text-xl">{item.icon}</span>
+            {item.label}
+          </button>
+        ))}
+
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab("admin")}
+            className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black transition-all mt-4 ${
+              activeTab === "admin" ? "bg-orange-500 text-white shadow-lg shadow-orange-200 scale-105" : "text-orange-400 hover:bg-orange-50"
+            }`}
+          >
+            <span className="text-xl">⚙️</span>
+            管理設定
+          </button>
+        )}
+      </div>
+
+      {/* 4. ログアウトボタン */}
+      <div className="p-4 bg-slate-50/50">
+        <button
+          onClick={signOut}
+          className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-red-400 hover:bg-red-100/50 hover:text-red-600 transition-all border border-transparent hover:border-red-100"
+        >
+          <span className="text-xl">🚪</span>
+          ログアウト
         </button>
-      ))}
-      {isAdmin && (
-        <button onClick={() => setActiveTab("admin")} className={`p-4 rounded-xl font-bold text-left mt-6 ${activeTab === "admin" ? "bg-orange-600 text-white shadow-lg shadow-orange-200" : "text-orange-600 bg-orange-50 hover:bg-orange-100"}`}>
-          ⚙️ 管理設定
-        </button>
-      )}
-    </nav>
-    <button onClick={signOut} className="mt-4 p-4 text-red-500 font-bold border border-red-100 rounded-xl hover:bg-red-50 transition-colors">ログアウト</button>
-  </aside>
-);
+      </div>
+    </aside>
+  );
+};
 
 export const Footer = ({ setPolicyContent }: any) => (
-  <div className="mt-20 py-12 border-t border-slate-300 text-center">
-    <div className="flex flex-wrap justify-center gap-x-8 gap-y-4 text-sm font-black text-slate-600 uppercase tracking-widest">
-      <button onClick={() => setPolicyContent(POLICIES.privacy)} className="hover:text-blue-600 transition-colors border-b-2 border-transparent hover:border-blue-600">プライバシーポリシー</button>
-      <button onClick={() => setPolicyContent(POLICIES.security)} className="hover:text-blue-600 transition-colors border-b-2 border-transparent hover:border-blue-600">セキュリティポリシー</button>
-      <button onClick={() => setPolicyContent(POLICIES.tokusho)} className="hover:text-blue-600 transition-colors border-b-2 border-transparent hover:border-blue-600">特定商取引法に基づく表記</button>
+  <footer className="mt-20 py-10 border-t border-slate-100 flex flex-wrap gap-x-8 gap-y-4 justify-center">
+    <button onClick={() => setPolicyContent({ title: "利用規約", content: "ここに利用規約の内容が入ります..." })} className="text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors">利用規約</button>
+    <button onClick={() => setPolicyContent({ title: "プライバシーポリシー", content: "ここにプライバシーポリシーの内容が入ります..." })} className="text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors">プライバシーポリシー</button>
+    <button onClick={() => setPolicyContent({ title: "特定商取引法に基づく表記", content: "ここに表記内容が入ります..." })} className="text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors">特定商取引法に基づく表記</button>
+    <div className="w-full text-center mt-6">
+      <span className="text-xs text-slate-900 font-bold tracking-tight">
+        © 2026 <a 
+          href="https://www.waqup.co.jp/" 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          className="text-blue-600 hover:text-blue-800 underline decoration-blue-400 decoration-2 underline-offset-4 transition-all"
+        >WaQUP</a>,Inc.
+      </span>
     </div>
-    <p className="mt-8 text-sm font-bold text-slate-500 tracking-tight">
-      © 2026 <a href="https://www.waqup.co.jp/" target="_blank" rel="noopener noreferrer" className="text-slate-600 hover:text-blue-600 underline underline-offset-4 decoration-2 transition-colors">WaQUP,Inc.</a>
-    </p>
-  </div>
+  </footer>
 );
 
-export const MobileNav = ({ activeTab, setActiveTab, isAdmin }: any) => (
-  <nav className="md:hidden fixed bottom-0 left-0 right-0 h-24 bg-white/95 backdrop-blur-md border-t border-slate-200 flex justify-around items-center z-[100] px-4 shadow-[0_-10px_30px_rgba(0,0,0,0.05)]">
-    <button onClick={() => setActiveTab("home")} className={`flex-1 flex flex-col items-center gap-1 ${activeTab === "home" ? "text-blue-600" : "text-slate-300"}`}><span className="text-2xl">🔄</span><span className="text-[10px] font-black uppercase">Home</span></button>
-    <button onClick={() => setActiveTab("history")} className={`flex-1 flex flex-col items-center gap-1 ${activeTab === "history" ? "text-blue-600" : "text-slate-300"}`}><span className="text-2xl">📋</span><span className="text-[10px] font-black uppercase">History</span></button>
-    <button onClick={() => setActiveTab("userSettings")} className={`flex-1 flex flex-col items-center gap-1 ${activeTab === "userSettings" ? "text-blue-600" : "text-slate-300"}`}><span className="text-2xl">🔑</span><span className="text-[10px] font-black uppercase">Keys</span></button>
-    <button onClick={() => setActiveTab("profile")} className={`flex-1 flex flex-col items-center gap-1 ${activeTab === "profile" ? "text-blue-600" : "text-slate-300"}`}><span className="text-2xl">👤</span><span className="text-[10px] font-black uppercase">Profile</span></button>
-    {isAdmin && <button onClick={() => setActiveTab("admin")} className={`flex-1 flex flex-col items-center gap-1 ${activeTab === "admin" ? "text-orange-600" : "text-slate-300"}`}><span className="text-2xl">⚙️</span><span className="text-[10px] font-black uppercase">Admin</span></button>}
-  </nav>
-);
+export const MobileNav = ({ activeTab, setActiveTab, isAdmin }: any) => {
+  const navItems = [
+    { id: "home", icon: "💎" },
+    { id: "history", icon: "📋" },
+    { id: "userSettings", icon: "🔑" },
+    { id: "profile", icon: "👤" },
+  ];
+  if (isAdmin) navItems.push({ id: "admin", icon: "⚙️" });
+
+  return (
+    <nav className="md:hidden fixed bottom-6 left-6 right-6 bg-slate-900/90 backdrop-blur-xl rounded-[2.5rem] p-4 flex justify-around items-center shadow-2xl z-[200]">
+      {navItems.map((item) => (
+        <button
+          key={item.id}
+          onClick={() => setActiveTab(item.id)}
+          className={`w-12 h-12 flex items-center justify-center rounded-2xl text-2xl transition-all ${
+            activeTab === item.id ? "bg-blue-600 text-white scale-125 shadow-lg shadow-blue-500/50" : "text-slate-400"
+          }`}
+        >
+          {item.icon}
+        </button>
+      ))}
+    </nav>
+  );
+};

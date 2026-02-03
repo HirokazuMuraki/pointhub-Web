@@ -89,7 +89,7 @@ function LoggedInApp({ user, signOut }: { user: any, signOut: any }) {
         {activeTab === "home" && <ExchangeForm services={services} client={client} userEmail={userEmail} onSuccess={() => setActiveTab("history")} styles={styles} />}
         {activeTab === "history" && <HistoryList transactions={transactions} allUsers={allUsers} isAdmin={isAdmin} styles={styles} />}
         {activeTab === "userSettings" && <UserSettings services={services} client={client} userEmail={userEmail} styles={styles} />}
-        {activeTab === "profile" && <ProfileSettings profile={profile} client={client} styles={styles} />}
+        {activeTab === "profile" && <ProfileSettings profile={profile} client={client} styles={styles} signOut={signOut} />}
         {activeTab === "admin" && isAdmin && <AdminPanel services={services} allUsers={allUsers} transactions={transactions} client={client} styles={styles} setViewingUser={setViewingUser} />}
         <Footer setPolicyContent={setPolicyContent} />
       </main>

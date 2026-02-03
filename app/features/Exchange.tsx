@@ -1,76 +1,73 @@
 import React, { useState } from "react";
+import { syncPointToMakeShop } from "../services/MakeShopService";
 
 export const ExchangeForm = ({ services, client, userEmail, onSuccess, styles }: any) => {
-  const [fromService, setFromService] = useState("");
-  const [toService, setToService] = useState("");
-  const [amount, setAmount] = useState<number>(0);
-
-  const isSameService = fromService !== "" && toService !== "" && fromService === toService;
+  const [fromSvc, setFromSvc] = useState("");
+  const [toSvc, setToSvc] = useState("");
+  const [amount, setAmount] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const handleExchange = async () => {
-    if (!fromService || !toService || isSameService || amount <= 0) return;
+    if (!fromSvc || !toSvc || !amount) return alert("入力してください");
     
+    setIsProcessing(true);
     try {
-      await client.models.ExchangeTransaction.create({
-        userEmail,
-        fromServiceName: services.find((s: any) => s.id === fromService)?.name,
-        toServiceName: services.find((s: any) => s.id === toService)?.name,
-        amount,
-        status: "SUCCESS"
-      });
-      onSuccess();
+      // 1. MakeShop連携を実行 (外部API)
+      const externalResult = await syncPointToMakeShop(userEmail, parseInt(amount));
+      
+      if (externalResult.success) {
+        // 2. 外部連携が成功したら自社DBに記録
+        await client.models.ExchangeTransaction.create({
+          userEmail,
+          fromServiceName: fromSvc,
+          toServiceName: toSvc,
+          amount: parseInt(amount),
+          status: "COMPLETED",
+          externalRefId: externalResult.refId // MakeShop側の受付IDを保存
+        });
+
+        alert(`交換成功！\nMakeShop伝票番号: ${externalResult.refId}`);
+        setAmount("");
+        onSuccess();
+      }
     } catch (err) {
-      alert("交換処理に失敗しました");
+      console.error(err);
+      alert("エラーが発生しました。");
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   return (
-    <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
-      <h2 className={styles.sectionTitle}>🔄 ポイント交換</h2>
-      <div className="grid md:grid-cols-2 gap-6">
+    <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+      <h2 className={styles.sectionTitle}>💎 ポイント交換</h2>
+      <div className="space-y-4">
         <div>
-          <label className={styles.label}>交換元</label>
-          <select value={fromService} onChange={(e) => setFromService(e.target.value)} className={styles.input}>
-            <option value="">選択</option>
-            {services.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          <label className={styles.label}>交換元サービス</label>
+          <select value={fromSvc} onChange={(e) => setFromSvc(e.target.value)} className={styles.input}>
+            <option value="">選択してください</option>
+            {services.map((s: any) => <option key={s.id} value={s.name}>{s.name}</option>)}
           </select>
         </div>
         <div>
-          <label className={styles.label}>交換先</label>
-          <select 
-            value={toService} 
-            onChange={(e) => setToService(e.target.value)} 
-            className={`${styles.input} ${isSameService ? "border-red-500 ring-4 ring-red-500/10" : ""}`}
-          >
-            <option value="">選択</option>
-            {services.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          <label className={styles.label}>交換先サービス (MakeShop連携)</label>
+          <select value={toSvc} onChange={(e) => setToSvc(e.target.value)} className={styles.input}>
+            <option value="">選択してください</option>
+            <option value="MakeShop">MakeShop ポイント</option>
           </select>
         </div>
+        <div>
+          <label className={styles.label}>交換ポイント数</label>
+          <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className={styles.input} />
+        </div>
+        <button 
+          onClick={handleExchange} 
+          disabled={isProcessing}
+          className={`w-full py-4 text-white font-black rounded-xl transition-all ${isProcessing ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-700'}`}
+        >
+          {isProcessing ? "外部サービス連携中..." : "交換を実行する"}
+        </button>
       </div>
-      
-      {isSameService && (
-        <p className="mt-2 text-red-500 text-sm font-black animate-bounce">
-          ⚠️ 同じサービスは選択できません。
-        </p>
-      )}
-
-      <div className="mt-6">
-        <label className={styles.label}>金額</label>
-        <input 
-          type="number" 
-          value={amount} 
-          onChange={(e) => setAmount(Number(e.target.value))} 
-          className={styles.input + " text-3xl font-black h-16"} 
-        />
-      </div>
-
-      <button 
-        disabled={!fromService || !toService || isSameService || amount <= 0} 
-        onClick={handleExchange}
-        className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl mt-6 shadow-xl shadow-blue-100 active:scale-95 disabled:bg-slate-200 transition-all"
-      >
-        交換を確定する
-      </button>
     </div>
   );
 };
