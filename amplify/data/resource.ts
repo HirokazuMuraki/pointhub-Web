@@ -1,7 +1,8 @@
 import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
+import { getShopservePoints } from "../functions/get-shopserve-points/resource";
+import { operateShopservePoints } from "../functions/operate-shopserve-points/resource";
 
 const schema = a.schema({
-  // 1. ユーザープロフィール
   UserProfile: a.model({
     email: a.string().required(),
     name: a.string(),
@@ -11,23 +12,17 @@ const schema = a.schema({
     address: a.string(),
     lineId: a.string(),
     isDisabled: a.boolean().default(false),
-  }).authorization((allow) => [
-    allow.authenticated()
-  ]),
+  }).authorization((allow) => [allow.authenticated()]),
 
-  // 2. 外部サービス接続マスタ（管理者設定用）
   ServiceMaster: a.model({
-    name: a.string().required(),      // 例: MakeShop本店
-    type: a.string().required(),      // 例: MAKESHOP
-    endpointUrl: a.url(),             // API接続先
-    status: a.string(),               // ACTIVE, MAINTENANCEなど
-    connectionSettings: a.string(),   // JSON形式で後から何でも入れられる袋
-    description: a.string(),          // 備考
-  }).authorization((allow) => [
-    allow.authenticated()
-  ]),
+    name: a.string().required(),
+    type: a.string().required(),
+    endpointUrl: a.url(),
+    status: a.string(),
+    connectionSettings: a.string(),
+    description: a.string(),
+  }).authorization((allow) => [allow.authenticated()]),
 
-  // 3. ユーザーの接続資格情報（一般利用者用）
   UserServiceCredential: a.model({
     userEmail: a.string().required(),
     serviceId: a.string().required(),
@@ -35,12 +30,8 @@ const schema = a.schema({
     loginId: a.string().required(),
     password: a.string().required(),
     status: a.string(),
-  }).authorization((allow) => [
-    allow.owner(),
-    allow.authenticated().to(['read'])
-  ]),
+  }).authorization((allow) => [allow.owner(), allow.authenticated().to(['read'])]),
 
-  // 4. 交換履歴・トランザクション
   ExchangeTransaction: a.model({
     userEmail: a.string().required(),
     fromServiceName: a.string(),
@@ -48,16 +39,42 @@ const schema = a.schema({
     amount: a.integer().required(),
     status: a.string(),
     errorMessage: a.string(),
-  }).authorization((allow) => [
-    allow.authenticated()
-  ]),
+  }).authorization((allow) => [allow.authenticated()]),
+
+  getShopservePoints: a
+    .query()
+    .arguments({
+      accountId: a.string().required(),
+      shopId: a.string().required(),
+      authKey: a.string().required(),
+    })
+    .returns(a.customType({
+      points: a.integer(),
+      expire: a.string(),
+    }))
+    .handler(a.handler.function(getShopservePoints))
+    .authorization(allow => [allow.authenticated()]),
+
+  // ★追加: ポイント操作用ミューテーション
+  operateShopservePoints: a
+    .mutation()
+    .arguments({
+      accountId: a.string().required(),
+      shopId: a.string().required(),
+      authKey: a.string().required(),
+      amount: a.integer().required(),
+      note: a.string(),
+    })
+    .returns(a.customType({
+      success: a.boolean(),
+      message: a.string(),
+    }))
+    .handler(a.handler.function(operateShopservePoints))
+    .authorization(allow => [allow.authenticated()]),
 });
 
 export type Schema = ClientSchema<typeof schema>;
-
 export const data = defineData({
   schema,
-  authorizationModes: {
-    defaultAuthorizationMode: "userPool",
-  },
+  authorizationModes: { defaultAuthorizationMode: "userPool" },
 });
