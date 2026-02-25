@@ -12,13 +12,17 @@ const schema = a.schema({
     address: a.string(),
     lineId: a.string(),
     isDisabled: a.boolean().default(false),
-  }).authorization((allow) => [allow.authenticated()]),
+  }).authorization((allow) => [
+    allow.owner(),
+    allow.authenticated()
+  ]),
 
   ServiceMaster: a.model({
     name: a.string().required(),
     type: a.string().required(),
     endpointUrl: a.url(),
     status: a.string(),
+    dummyBalance: a.integer().default(300),
     connectionSettings: a.string(),
     description: a.string(),
   }).authorization((allow) => [allow.authenticated()]),
@@ -30,6 +34,7 @@ const schema = a.schema({
     loginId: a.string().required(),
     password: a.string().required(),
     status: a.string(),
+    dummyBalance: a.integer().default(300),
   }).authorization((allow) => [allow.owner(), allow.authenticated().to(['read'])]),
 
   ExchangeTransaction: a.model({
@@ -38,6 +43,7 @@ const schema = a.schema({
     toServiceName: a.string(),
     amount: a.integer().required(),
     status: a.string(),
+    dummyBalance: a.integer().default(300),
     errorMessage: a.string(),
   }).authorization((allow) => [allow.authenticated()]),
 
@@ -55,7 +61,6 @@ const schema = a.schema({
     .handler(a.handler.function(getShopservePoints))
     .authorization(allow => [allow.authenticated()]),
 
-  // ★追加: ポイント操作用ミューテーション
   operateShopservePoints: a
     .mutation()
     .arguments({

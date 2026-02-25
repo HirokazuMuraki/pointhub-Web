@@ -1,109 +1,174 @@
 "use client";
-import { useState, useEffect } from "react";
-import { Authenticator } from "@aws-amplify/ui-react";
-import "@aws-amplify/ui-react/styles.css";
-import { Amplify } from "aws-amplify";
-import { generateClient } from "aws-amplify/api";
-import { type Schema } from "../amplify/data/resource";
-import outputs from "../amplify_outputs.json";
 
-import { Sidebar, Footer, MobileNav } from "./components/Layout";
-import { PolicyModal, UserHistoryModal } from "./components/Modals";
-import { ExchangeForm } from "./features/Exchange";
+import { useState, useEffect } from "react";
+import { Amplify } from "aws-amplify";
+import { generateClient } from "aws-amplify/data";
+import { Authenticator, useAuthenticator } from "@aws-amplify/ui-react";
+import { fetchAuthSession } from "aws-amplify/auth"; 
+import "@aws-amplify/ui-react/styles.css";
+import type { Schema } from "@/amplify/data/resource";
+import outputs from "@/amplify_outputs.json";
+
+import { PointExchange } from "./features/PointExchange";
+import { UserSettings } from "./features/UserSettings";
 import { AdminPanel } from "./features/Admin";
 import { HistoryList } from "./features/History";
-import { ProfileSettings } from "./features/Profile";
-import { UserSettings } from "./features/UserSettings";
+import { UserProfile } from "./features/UserProfile";
 
 Amplify.configure(outputs);
 const client = generateClient<Schema>();
 
-const styles = {
-  input: "w-full p-3 border rounded-xl bg-white text-gray-900 focus:ring-4 focus:ring-blue-500/20 mb-2 border-gray-200 text-lg font-medium transition-all",
-  label: "text-sm font-black text-gray-500 uppercase tracking-widest ml-2 mb-1 block",
-  sectionTitle: "text-2xl font-black text-slate-900 mb-6 flex items-center gap-2",
-};
-
-function LoggedInApp({ user, signOut }: { user: any, signOut: any }) {
-  const [activeTab, setActiveTab] = useState("home");
-  const [services, setServices] = useState<Schema["ServiceMaster"]["type"][]>([]);
-  const [transactions, setTransactions] = useState<Schema["ExchangeTransaction"]["type"][]>([]);
-  const [profile, setProfile] = useState<Schema["UserProfile"]["type"] | null>(null);
-  const [allUsers, setAllUsers] = useState<Schema["UserProfile"]["type"][]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  
-  const [viewingUser, setViewingUser] = useState<{email: string, name: string} | null>(null);
-  const [policyContent, setPolicyContent] = useState<{title: string, content: string} | null>(null);
-
+function Dashboard({ user, signOut }: { user: any, signOut: any }) {
+  const [services, setServices] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState("exchange");
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [displayName, setDisplayName] = useState<string>("");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const userEmail = user?.signInDetails?.loginId || user?.username || "";
-  const isAdmin = profile?.role === "ADMIN";
 
   useEffect(() => {
-    if (!user || !client.models) return;
-    const subs: any[] = [];
+    fetchAuthSession().then(session => {
+      const groups = session.tokens?.idToken?.payload["cognito:groups"] as string[];
+      if (groups?.includes("Admins")) setIsAdmin(true);
+    });
+    client.models.ServiceMaster.list().then(({ data }) => setServices(data));
     
-    subs.push(client.models.ServiceMaster.observeQuery().subscribe({ next: ({ items }) => setServices([...items]) }));
+    setDisplayName(userEmail.split('@')[0]);
+    client.models.UserProfile.list({ filter: { email: { eq: userEmail } } }).then(({ data }) => {
+      if (data.length > 0 && data[0].name) setDisplayName(data[0].name);
+    });
+  }, [userEmail]);
 
-    subs.push(client.models.UserProfile.observeQuery({ filter: { email: { eq: userEmail } } }).subscribe({
-      next: ({ items }) => {
-        if (items.length > 0) {
-          const p = items[0];
-          setProfile(p);
-          
-          const transactionSub = client.models.ExchangeTransaction.observeQuery({
-             filter: p.role === "ADMIN" ? undefined : { userEmail: { eq: userEmail } }
-          }).subscribe({
-            next: ({ items }) => {
-              const sorted = [...items].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-              setTransactions(sorted);
-            }
-          });
-          subs.push(transactionSub);
-          setIsLoading(false);
-        } else {
-          client.models.UserProfile.create({ 
-            email: userEmail, 
-            role: userEmail.includes("admin") ? "ADMIN" : "USER", 
-            isDisabled: false 
-          }).then(() => setIsLoading(false));
-        }
-      }
-    }));
+  const menuItems = [
+    { id: "exchange", label: "交換実行", icon: "🔄" },
+    { id: "history", label: "履歴一覧", icon: "📋" },
+    { id: "settings", label: "交換先設定", icon: "🔗" },
+    { id: "profile", label: "プロフィール", icon: "👤" },
+    ...(isAdmin ? [{ id: "admin", label: "管理設定", icon: "⚙️" }] : [])
+  ];
 
-    subs.push(client.models.UserProfile.observeQuery().subscribe({ next: ({ items }) => setAllUsers([...items]) }));
-    
-    return () => subs.forEach(s => s?.unsubscribe());
-  }, [user, userEmail]);
-
-  if (isLoading) return <div className="h-screen flex items-center justify-center font-bold">読み込み中...</div>;
+  const styles = {
+    label: "block text-xs font-black text-slate-500 mb-2 ml-1 uppercase",
+    input: "w-full px-5 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:outline-none font-bold text-slate-700",
+    sectionTitle: "text-2xl font-black text-slate-800 mb-6",
+  };
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-slate-50 font-sans text-slate-900">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} name={profile?.name} email={userEmail} signOut={signOut} isAdmin={isAdmin} />
-      <main className="flex-grow p-4 md:p-10 max-w-5xl mx-auto w-full pb-48">
-        <header className="md:hidden flex justify-between items-center mb-8 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-          <h1 className="text-xl font-black text-blue-600 italic">POINT HUB</h1>
-          <p className="text-xs font-black text-slate-900">{profile?.name || userEmail}</p>
-        </header>
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col lg:flex-row w-full">
+      <header className="lg:hidden flex items-center justify-between bg-white px-6 py-4 border-b border-slate-100 sticky top-0 z-30">
+        <h1 className="text-xl font-black italic text-slate-900">POINT<span className="text-orange-500">HUB</span></h1>
+        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-slate-900 text-2xl font-bold">
+          {isSidebarOpen ? "✕" : "☰"}
+        </button>
+      </header>
 
-        {activeTab === "home" && <ExchangeForm services={services} client={client} userEmail={userEmail} onSuccess={() => setActiveTab("history")} styles={styles} />}
-        {activeTab === "history" && <HistoryList transactions={transactions} allUsers={allUsers} isAdmin={isAdmin} styles={styles} />}
-        {activeTab === "userSettings" && <UserSettings services={services} client={client} userEmail={userEmail} styles={styles} />}
-        {activeTab === "profile" && <ProfileSettings profile={profile} client={client} styles={styles} signOut={signOut} />}
-        {activeTab === "admin" && isAdmin && <AdminPanel services={services} allUsers={allUsers} transactions={transactions} client={client} styles={styles} setViewingUser={setViewingUser} />}
-        <Footer setPolicyContent={setPolicyContent} />
+      {isSidebarOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
+      )}
+
+      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white border-r border-slate-100 flex flex-col transform transition-transform duration-300 lg:translate-x-0 lg:static lg:h-screen ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="p-8 pb-2 hidden lg:block">
+          <h1 className="text-3xl font-black italic text-slate-900 leading-none">POINT<span className="text-orange-500">HUB</span></h1>
+        </div>
+        <div className="px-6 py-2 mt-4 lg:mt-0">
+          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-tight">ようこそ</p>
+            <p className="text-sm font-black text-slate-900 truncate mt-0.5">{displayName} 様</p>
+            {isAdmin && <span className="text-[8px] font-black text-orange-600 bg-orange-100/50 px-1.5 py-0.5 rounded uppercase mt-1 inline-block">Admin Access</span>}
+          </div>
+        </div>
+        <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
+          {menuItems.map(item => (
+            <button key={item.id} onClick={() => { setActiveTab(item.id); setIsSidebarOpen(false); }} 
+              className={`w-full flex items-center space-x-3 px-4 py-4 rounded-2xl font-black transition-all ${activeTab === item.id ? "bg-slate-900 text-white shadow-lg" : "text-slate-400 hover:bg-slate-50"}`}>
+              <span className="text-xl">{item.icon}</span>
+              <span className="text-sm">{item.label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="p-6 border-t border-slate-50">
+          <button onClick={signOut} className="flex items-center space-x-3 px-4 py-3 w-full text-left text-xs font-black text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all">
+            <span className="text-lg">🚪</span><span>ログアウト</span>
+          </button>
+        </div>
+      </aside>
+
+      <main className="flex-1 p-6 lg:p-12 w-full min-h-screen">
+        <div className="max-w-7xl mx-auto w-full">
+          <header className="mb-6 lg:mb-10">
+            <h2 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight lowercase italic">
+              {menuItems.find(i => i.id === activeTab)?.label}
+            </h2>
+            <div className="h-1.5 w-16 bg-orange-500 mt-4 rounded-full"></div>
+          </header>
+          <div className="bg-white p-4 lg:p-10 rounded-[2rem] lg:rounded-[3rem] shadow-xl border border-slate-100 min-h-[500px] w-full">
+            {activeTab === "exchange" && <PointExchange client={client} userEmail={userEmail} styles={styles} services={services} setActiveTab={setActiveTab} />}
+            {activeTab === "history" && <HistoryList client={client} userEmail={userEmail} styles={styles} />}
+            {activeTab === "settings" && <UserSettings services={services} client={client} userEmail={userEmail} styles={styles} />}
+            {activeTab === "profile" && <UserProfile client={client} userEmail={userEmail} styles={styles} />}
+            {activeTab === "admin" && isAdmin && <AdminPanel client={client} styles={styles} services={services} onRefresh={() => {}} />}
+          </div>
+        </div>
       </main>
-      <MobileNav activeTab={activeTab} setActiveTab={setActiveTab} isAdmin={isAdmin} />
-      <PolicyModal content={policyContent} onClose={() => setPolicyContent(null)} />
-      <UserHistoryModal viewingUser={viewingUser} transactions={transactions} onClose={() => setViewingUser(null)} />
     </div>
   );
 }
 
-export default function App() {
+function LandingPageSwitcher() {
+  const { authStatus, user, signOut } = useAuthenticator((context) => [context.authStatus]);
+  
+  if (authStatus === 'configuring') return <div className="min-h-screen flex items-center justify-center font-black italic text-slate-200 text-4xl">LOADING...</div>;
+  if (authStatus === 'authenticated') return <Dashboard user={user} signOut={signOut} />;
+
   return (
-    <Authenticator>
-      {({ signOut, user }) => <LoggedInApp user={user} signOut={signOut} />}
-    </Authenticator>
+    <div className="min-h-screen bg-white font-sans text-slate-900 overflow-x-hidden">
+      {/* 構文エラーを回避するための標準styleタグ形式 */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        [data-amplify-authenticator] { display: block !important; width: 100% !important; border: none !important; background: transparent !important; box-shadow: none !important; }
+        .amplify-authenticator__column { width: 100% !important; max-width: 100% !important; }
+        .amplify-flex { width: 100% !important; }
+        .amplify-input { border-radius: 1rem !important; padding: 0.75rem 1rem !important; }
+        .amplify-button--primary { border-radius: 1rem !important; background: #0f172a !important; font-weight: 900 !important; }
+        .amplify-tabs__item--active { border-color: #f97316 !important; color: #0f172a !important; }
+      `}} />
+
+      <nav className="flex justify-between items-center px-6 lg:px-8 py-6 lg:py-10 max-w-7xl mx-auto relative z-20">
+        <h1 className="text-2xl lg:text-4xl font-black italic tracking-tighter">POINT<span className="text-orange-500">HUB</span></h1>
+        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+          <a href="https://www.waqup.co.jp/" target="_blank">Official Site</a>
+        </div>
+      </nav>
+
+      <section className="relative px-6 lg:px-8 pt-6 pb-20 max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between gap-12 min-h-[80vh]">
+        <div className="w-full lg:w-1/2 text-center lg:text-left relative z-10">
+          <div className="inline-block px-4 py-1.5 bg-slate-900 text-white text-[9px] font-black rounded-full mb-6 lg:mb-10 uppercase tracking-[0.3em]">Next Gen Fintech</div>
+          <h2 className="text-4xl lg:text-[6rem] font-black leading-[1.1] lg:leading-[0.9] mb-8 tracking-tighter text-slate-900">
+            ポイントを、<br/><span className="text-orange-500 italic">自由</span>にする。
+          </h2>
+          <p className="text-lg lg:text-xl text-slate-400 font-bold leading-relaxed mb-10 max-w-md mx-auto lg:mx-0">
+            複数のポイントを一つに。資産価値を最大化する次世代ポイントエクスチェンジ。
+          </p>
+        </div>
+
+        <div className="w-full lg:w-[540px] relative z-20">
+          <div className="absolute inset-0 bg-orange-500/10 blur-[80px] rounded-full -z-10" />
+          <div className="bg-white p-6 lg:p-14 rounded-[3rem] lg:rounded-[4rem] shadow-2xl border border-slate-50 flex flex-col items-center">
+            <div className="mb-8 text-center w-full">
+              <h3 className="text-xl lg:text-2xl font-black tracking-tighter text-slate-900 uppercase italic">Member Login</h3>
+              <div className="h-1 bg-orange-500 w-10 mx-auto mt-2 rounded-full"></div>
+            </div>
+            <div className="w-full"><Authenticator /></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Authenticator.Provider>
+      <LandingPageSwitcher />
+    </Authenticator.Provider>
   );
 }

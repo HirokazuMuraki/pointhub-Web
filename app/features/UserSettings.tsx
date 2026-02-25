@@ -1,199 +1,157 @@
+"use client";
+
 import React, { useState, useEffect } from "react";
 
 export const UserSettings = ({ services, client, userEmail, styles }: any) => {
-  const [selectedSvcId, setSelectedSvcId] = useState("");
-  const [targetLoginId, setTargetLoginId] = useState("");
-  const [targetPassword, setTargetPassword] = useState("");
   const [userCredentials, setUserCredentials] = useState<any[]>([]);
   const [fetchedPoints, setFetchedPoints] = useState<{ [key: string]: number | null }>({});
   const [isLoading, setIsLoading] = useState<{ [key: string]: boolean }>({});
   const [isEditing, setIsEditing] = useState<string | null>(null);
+  
+  const [selectedSvcId, setSelectedSvcId] = useState("");
+  const [targetLoginId, setTargetLoginId] = useState("");
+  const [targetPassword, setTargetPassword] = useState("");
 
-  // 1. 連携情報の取得（リアルタイム監視）
   useEffect(() => {
     const sub = client.models.UserServiceCredential.observeQuery({
       filter: { userEmail: { eq: userEmail } }
     }).subscribe({
-      next: ({ items }: any) => {
-        // ID順などでソートしておくと、画面のガタつきが減ります
-        setUserCredentials([...items]);
-      },
+      next: ({ items }: any) => setUserCredentials([...items]),
     });
     return () => sub.unsubscribe();
   }, [userEmail, client]);
 
-  // 設定取得補助
-  const getSvcSettings = (serviceId: string) => {
+  const getSvcInfo = (serviceId: string) => {
     const svcMaster = services.find((s: any) => s.id === serviceId);
-    return svcMaster ? JSON.parse(svcMaster.connectionSettings || "{}") : {};
-  };
-
-  // 保存・更新処理
-  const handleSaveCredential = async () => {
-    // 判定の修正: 編集モードなら selectedSvcId が空でもOKにする（既存の値を保持するため）
-    if (!targetLoginId || !targetPassword || (!isEditing && !selectedSvcId)) {
-      alert("すべての項目を入力してください");
-      return;
-    }
-
-    try {
-      if (isEditing) {
-        // 更新モード
-        await client.models.UserServiceCredential.update({
-          id: isEditing,
-          loginId: targetLoginId,
-          password: targetPassword
-        });
-        alert("情報を更新しました");
-      } else {
-        // 新規登録モード
-        const svc = services.find((s: any) => s.id === selectedSvcId);
-        await client.models.UserServiceCredential.create({
-          userEmail,
-          serviceId: selectedSvcId,
-          serviceName: svc.name,
-          loginId: targetLoginId,
-          password: targetPassword
-        });
-        alert("連携情報を保存しました");
-      }
-      resetForm();
-    } catch (err) {
-      console.error(err);
-      alert("処理に失敗しました");
-    }
-  };
-
-  // 削除処理
-  const handleDelete = async (id: string) => {
-    if (!confirm("この連携を解除してもよろしいですか？\n（Shopserve側のポイントは消えません）")) return;
-    try {
-      await client.models.UserServiceCredential.delete({ id });
-      // observeQueryが動かない場合に備え、手動でステートを更新
-      setUserCredentials(prev => prev.filter(item => item.id !== id));
-      alert("連携を解除しました");
-    } catch (err) {
-      alert("解除に失敗しました");
-    }
-  };
-
-  // 編集モード切替
-  const startEdit = (c: any) => {
-    setIsEditing(c.id);
-    setSelectedSvcId(c.serviceId);
-    setTargetLoginId(c.loginId);
-    setTargetPassword(c.password);
-    // スクロールさせて編集フォームに誘導
-    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-  };
-
-  const resetForm = () => {
-    setIsEditing(null);
-    setSelectedSvcId("");
-    setTargetLoginId("");
-    setTargetPassword("");
+    const settings = JSON.parse(svcMaster?.connectionSettings || "{}");
+    return { 
+      settings, 
+      type: svcMaster?.type,
+      masterAuthKey: settings?.authKey,
+      shopId: settings?.shopId 
+    };
   };
 
   const fetchPoint = async (credential: any) => {
-    const settings = getSvcSettings(credential.serviceId);
-    if (!settings.shopId) {
-      alert("サービスの設定が見つかりません");
+    if (credential.serviceName.includes("ダミー")) {
+      setFetchedPoints(prev => ({ ...prev, [credential.id]: credential.dummyBalance ?? 0 }));
       return;
     }
 
+    const info = getSvcInfo(credential.serviceId);
     setIsLoading(prev => ({ ...prev, [credential.id]: true }));
     try {
-      const { data } = await client.queries.getShopservePoints({
+      const finalAuthKey = info.masterAuthKey || credential.password;
+      const { data, errors } = await client.queries.getShopservePoints({
         accountId: credential.loginId,
-        shopId: settings.shopId,
-        authKey: settings.authKey
+        shopId: info.shopId,
+        authKey: finalAuthKey
       });
+      if (errors) throw new Error(errors[0].message);
       setFetchedPoints(prev => ({ ...prev, [credential.id]: data.points }));
-    } catch (err) {
-      console.error(err);
-      alert("照会に失敗しました");
+    } catch (err: any) {
+      alert(`照会失敗: ${err.message}`);
     } finally {
       setIsLoading(prev => ({ ...prev, [credential.id]: false }));
     }
   };
 
+  const handleDelete = async (id: string) => {
+    if (!confirm("この連携を解除しますか？")) return;
+    try {
+      await client.models.UserServiceCredential.delete({ id });
+      alert("削除しました");
+    } catch (err) { alert("削除失敗"); }
+  };
+
+  const handleSaveCredential = async () => {
+    if (!targetLoginId || !targetPassword || (!isEditing && !selectedSvcId)) return alert("入力を確認してください");
+    try {
+      if (isEditing) {
+        await client.models.UserServiceCredential.update({ id: isEditing, loginId: targetLoginId, password: targetPassword });
+      } else {
+        const svc = services.find((s: any) => s.id === selectedSvcId);
+        await client.models.UserServiceCredential.create({ 
+          userEmail, serviceId: selectedSvcId, serviceName: svc.name, 
+          loginId: targetLoginId, password: targetPassword, dummyBalance: 300 
+        });
+      }
+      resetForm();
+    } catch (err) { alert("保存失敗"); }
+  };
+
+  const resetForm = () => { setIsEditing(null); setSelectedSvcId(""); setTargetLoginId(""); setTargetPassword(""); };
+
   return (
-    <div className="space-y-6">
-      {/* 連携済みリスト */}
-      <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
-        <h2 className={styles.sectionTitle}>🔗 連携済みサービス</h2>
+    <div className="p-6 lg:p-8 space-y-5">
+      <div className="bg-white p-6 lg:p-8 rounded-[2rem] border border-slate-100 shadow-sm">
+        <h2 className={`${styles.sectionTitle} mb-4`}>🔗 連携済みサービス</h2>
         <div className="space-y-4">
-          {userCredentials.length === 0 && (
-            <div className="text-center py-10">
-              <p className="text-slate-400 italic text-sm">連携中のサービスはありません</p>
-            </div>
-          )}
-          {userCredentials.map((c) => (
-            <div key={c.id} className="p-5 bg-slate-50 rounded-2xl border border-slate-100 hover:border-slate-200 transition-colors">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <div className="font-black text-slate-800 text-lg">{c.serviceName}</div>
-                  <div className="text-xs font-medium text-slate-400">ID: {c.loginId}</div>
+          {userCredentials.map((c) => {
+            let displayVal: any = "--";
+            if (fetchedPoints[c.id] !== undefined) {
+              displayVal = fetchedPoints[c.id];
+            } else if (c.serviceName.includes("ダミー")) {
+              displayVal = c.dummyBalance;
+            }
+
+            return (
+              <div key={c.id} className="p-4 lg:p-5 bg-slate-50 rounded-[1.5rem] border border-slate-100">
+                <div className="flex justify-between items-center mb-3">
+                  <div>
+                    <div className="font-black text-slate-800 text-base">{c.serviceName}</div>
+                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">ID: {c.loginId}</div>
+                  </div>
+                  <div className="flex gap-3">
+                    <button onClick={() => fetchPoint(c)} className="text-slate-400 hover:text-slate-900 text-[10px] font-bold transition-colors">
+                      {isLoading[c.id] ? "..." : "↻ 更新"}
+                    </button>
+                    <button onClick={() => {setIsEditing(c.id); setTargetLoginId(c.loginId);}} className="text-blue-500 hover:text-blue-700 text-[10px] font-bold">編集</button>
+                    <button onClick={() => handleDelete(c.id)} className="text-red-400 hover:text-red-600 text-[10px] font-bold">削除</button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={() => startEdit(c)} className="p-2 bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-blue-500 hover:border-blue-200 transition-all">✎</button>
-                  <button onClick={() => handleDelete(c.id)} className="p-2 bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-red-500 hover:border-red-200 transition-all">🗑</button>
+                
+                <div className="bg-white py-3 px-5 rounded-xl border border-slate-100 flex justify-between items-center shadow-sm">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Balance</span>
+                  <div className="text-right">
+                    <span className="text-2xl font-black text-orange-500">
+                      {typeof displayVal === 'number' ? displayVal.toLocaleString() : displayVal}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400 ml-1 italic">pt</span>
+                  </div>
                 </div>
               </div>
-              
-              <div className="flex justify-between items-end">
-                <button 
-                  onClick={() => fetchPoint(c)} 
-                  disabled={isLoading[c.id]} 
-                  className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black shadow-sm active:scale-95 transition-all"
-                >
-                  {isLoading[c.id] ? "照会中..." : "残高確認"}
-                </button>
-                <div className="text-right">
-                  <span className="text-2xl font-black text-orange-500">
-                    {fetchedPoints[c.id] !== undefined ? fetchedPoints[c.id]?.toLocaleString() : "--"}
-                  </span>
-                  <span className="text-xs font-bold text-slate-400 ml-1">pt</span>
-                </div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
-      {/* 登録・編集フォーム */}
-      <div className={`p-8 rounded-[2.5rem] border transition-all duration-300 ${isEditing ? 'bg-blue-50 border-blue-100 ring-4 ring-blue-50' : 'bg-white border-slate-100'}`}>
-        <h2 className={styles.sectionTitle}>{isEditing ? "✎ 連携情報の修正" : "➕ 新規サービス連携"}</h2>
-        <div className="space-y-4">
-          {!isEditing && (
-            <div>
-              <label className={styles.label}>対象サービス</label>
-              <select value={selectedSvcId} onChange={(e) => setSelectedSvcId(e.target.value)} className={styles.input}>
-                <option value="">選択してください</option>
-                {services.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-          )}
-          <div>
-            <label className={styles.label}>会員ID (Shopserve ID)</label>
-            <input value={targetLoginId} onChange={(e) => setTargetLoginId(e.target.value)} className={styles.input} placeholder="会員IDを入力" />
-          </div>
-          <div>
-            <label className={styles.label}>連携用パスワード</label>
-            <input type="password" value={targetPassword} onChange={(e) => setTargetPassword(e.target.value)} className={styles.input} placeholder="パスワードを入力" />
-          </div>
-          <div className="flex gap-2">
-            <button onClick={handleSaveCredential} className="flex-1 py-4 bg-slate-900 text-white font-black rounded-xl hover:bg-black transition-colors">
-              {isEditing ? "変更を保存" : "連携情報を保存"}
-            </button>
-            {isEditing && (
-              <button onClick={resetForm} className="px-6 py-4 bg-white text-slate-600 font-black rounded-xl border border-slate-200">
-                キャンセル
-              </button>
-            )}
+      {!isEditing ? (
+        <div className="bg-white p-6 lg:p-8 rounded-[2rem] border border-slate-100 shadow-sm">
+          <h2 className={`${styles.sectionTitle} mb-4`}>➕ 新規連携を追加</h2>
+          <div className="space-y-3">
+            <select value={selectedSvcId} onChange={(e) => setSelectedSvcId(e.target.value)} className={`${styles.input} py-3 text-sm`}>
+              <option value="">サービスを選択</option>
+              {services.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <input value={targetLoginId} onChange={(e) => setTargetLoginId(e.target.value)} className={`${styles.input} py-3 text-sm`} placeholder="会員ID / ショップID" />
+            <input type="password" value={targetPassword} onChange={(e) => setTargetPassword(e.target.value)} className={`${styles.input} py-3 text-sm`} placeholder="パスワード / API認証キー" />
+            <button onClick={handleSaveCredential} className="w-full py-3.5 bg-slate-900 text-white font-black rounded-xl hover:bg-orange-500 transition-all text-xs uppercase tracking-widest">保存する</button>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="bg-blue-50 p-6 lg:p-8 rounded-[2rem] border border-blue-100 shadow-inner">
+          <h2 className={`${styles.sectionTitle} mb-4`}>✎ 情報を修正</h2>
+          <div className="space-y-3">
+            <input value={targetLoginId} onChange={(e) => setTargetLoginId(e.target.value)} className={`${styles.input} py-3 text-sm bg-white`} placeholder="IDを修正" />
+            <input type="password" value={targetPassword} onChange={(e) => setTargetPassword(e.target.value)} className={`${styles.input} py-3 text-sm bg-white`} placeholder="パスワードを修正" />
+            <div className="flex gap-2">
+              <button onClick={handleSaveCredential} className="flex-1 py-3.5 bg-blue-600 text-white font-black rounded-xl text-xs uppercase tracking-widest">更新</button>
+              <button onClick={resetForm} className="px-6 py-3.5 bg-white text-slate-400 font-black rounded-xl border border-slate-200 text-xs">戻る</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
