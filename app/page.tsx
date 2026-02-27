@@ -56,7 +56,6 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
     sectionTitle: "text-2xl font-black text-slate-800 mb-6",
   };
 
-  // constants.ts のキーに基づいて表示内容を決定
   const handlePolicyClick = (title: string) => {
     if (title === "プライバシーポリシー") setPolicyContent(POLICIES.privacy);
     if (title === "セキュリティポリシー") setPolicyContent(POLICIES.security);
@@ -64,8 +63,8 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col lg:flex-row w-full">
-      <header className="lg:hidden flex items-center justify-between bg-white px-6 py-4 border-b border-slate-100 sticky top-0 z-30">
+    <div className="h-screen bg-[#F8FAFC] flex flex-col lg:flex-row overflow-hidden w-full">
+      <header className="lg:hidden flex items-center justify-between bg-white px-6 py-4 border-b border-slate-100 sticky top-0 z-30 shrink-0">
         <h1 className="text-xl font-black italic text-slate-900">POINT<span className="text-orange-500">HUB</span></h1>
         <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-slate-900 text-2xl font-bold">
           {isSidebarOpen ? "✕" : "☰"}
@@ -76,18 +75,35 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
       )}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white border-r border-slate-100 flex flex-col transform transition-transform duration-300 lg:translate-x-0 lg:static lg:h-screen ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
-        <div className="p-8 pb-2 hidden lg:block">
-          <h1 className="text-3xl font-black italic text-slate-900 leading-none">POINT<span className="text-orange-500">HUB</span></h1>
-        </div>
-        <div className="px-6 py-2 mt-4 lg:mt-0">
-          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-tight">ようこそ</p>
-            <p className="text-sm font-black text-slate-900 truncate mt-0.5">{displayName} 様</p>
-            {isAdmin && <span className="text-[8px] font-black text-orange-600 bg-orange-100/50 px-1.5 py-0.5 rounded uppercase mt-1 inline-block">Admin Access</span>}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white border-r border-slate-100 flex flex-col transform transition-transform duration-300 lg:translate-x-0 lg:static lg:h-screen shrink-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="shrink-0">
+          <div className="p-8 pb-2 hidden lg:block">
+            <h1 className="text-3xl font-black italic text-slate-900 leading-none">POINT<span className="text-orange-500">HUB</span></h1>
+          </div>
+          
+          <div className="px-6 py-4 mt-4 lg:mt-0">
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 relative">
+              <div className="flex justify-between items-start">
+                <div className="flex-1 overflow-hidden">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-tight">ようこそ</p>
+                  <p className="text-sm font-black text-slate-900 truncate mt-0.5">{displayName} 様</p>
+                </div>
+                {/* 文字を「ログアウト」に変更 */}
+                <button 
+                  onClick={signOut} 
+                  className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all border border-transparent hover:border-red-100 flex items-center gap-1 shrink-0 ml-2"
+                  title="ログアウト"
+                >
+                  <span className="text-sm">🚪</span>
+                  <span className="text-[10px] font-black whitespace-nowrap">ログアウト</span>
+                </button>
+              </div>
+              {isAdmin && <span className="text-[8px] font-black text-orange-600 bg-orange-100/50 px-1.5 py-0.5 rounded uppercase mt-1 inline-block">Admin Access</span>}
+            </div>
           </div>
         </div>
-        <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
+
+        <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto scrollbar-hide">
           {menuItems.map(item => (
             <button key={item.id} onClick={() => { setActiveTab(item.id); setIsSidebarOpen(false); }} 
               className={`w-full flex items-center space-x-3 px-4 py-4 rounded-2xl font-black transition-all ${activeTab === item.id ? "bg-slate-900 text-white shadow-lg" : "text-slate-400 hover:bg-slate-50"}`}>
@@ -96,27 +112,25 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
             </button>
           ))}
         </nav>
-        <div className="p-6 border-t border-slate-50">
-          <button onClick={signOut} className="flex items-center space-x-3 px-4 py-3 w-full text-left text-xs font-black text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all">
-            <span className="text-lg">🚪</span><span>ログアウト</span>
-          </button>
-        </div>
       </aside>
 
-      <main className="flex-1 p-6 lg:p-12 w-full min-h-screen flex flex-col relative text-slate-900">
-        <div className="max-w-7xl mx-auto w-full flex-grow">
-          <header className="mb-6 lg:mb-10">
-            <h2 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight lowercase italic">
-              {menuItems.find(i => i.id === activeTab)?.label}
-            </h2>
-            <div className="h-1.5 w-16 bg-orange-500 mt-4 rounded-full"></div>
-          </header>
-          <div className="bg-white p-4 lg:p-10 rounded-[2rem] lg:rounded-[3rem] shadow-xl border border-slate-100 min-h-[500px] w-full">
-            {activeTab === "exchange" && <PointExchange client={client} userEmail={userEmail} styles={styles} services={services} setActiveTab={setActiveTab} />}
-            {activeTab === "history" && <HistoryList client={client} userEmail={userEmail} styles={styles} />}
-            {activeTab === "settings" && <UserSettings services={services} client={client} userEmail={userEmail} styles={styles} />}
-            {activeTab === "profile" && <UserProfile client={client} userEmail={userEmail} styles={styles} />}
-            {activeTab === "admin" && isAdmin && <AdminPanel client={client} styles={styles} services={services} onRefresh={() => {}} />}
+      <main className="flex-1 h-screen overflow-y-auto p-6 lg:p-12 text-slate-900 scroll-smooth">
+        <div className="max-w-7xl mx-auto w-full min-h-full flex flex-col">
+          <div className="flex-grow">
+            <header className="mb-6 lg:mb-10">
+              <h2 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight lowercase italic">
+                {menuItems.find(i => i.id === activeTab)?.label}
+              </h2>
+              <div className="h-1.5 w-16 bg-orange-500 mt-4 rounded-full"></div>
+            </header>
+            
+            <div className="bg-white p-4 lg:p-10 rounded-[2rem] lg:rounded-[3rem] shadow-xl border border-slate-100 min-h-[500px] w-full mb-10">
+              {activeTab === "exchange" && <PointExchange client={client} userEmail={userEmail} styles={styles} services={services} setActiveTab={setActiveTab} />}
+              {activeTab === "history" && <HistoryList client={client} userEmail={userEmail} styles={styles} />}
+              {activeTab === "settings" && <UserSettings services={services} client={client} userEmail={userEmail} styles={styles} />}
+              {activeTab === "profile" && <UserProfile client={client} userEmail={userEmail} styles={styles} />}
+              {activeTab === "admin" && isAdmin && <AdminPanel client={client} styles={styles} services={services} onRefresh={() => {}} />}
+            </div>
           </div>
 
           <Footer setPolicyContent={(data: any) => handlePolicyClick(data.title)} />

@@ -10,18 +10,33 @@ export const Sidebar = ({ activeTab, setActiveTab, name, email, signOut, isAdmin
 
   return (
     <aside className="hidden md:flex flex-col w-72 bg-white border-r border-slate-100 h-screen sticky top-0 overflow-hidden">
+      {/* 1. ロゴエリア */}
       <div className="p-8 pb-4">
         <h1 className="text-3xl font-black text-blue-600 italic tracking-tighter">POINT HUB</h1>
       </div>
 
+      {/* 2. ユーザー情報エリア（右側にログアウトを配置） */}
       <div className="px-8 pb-6 mb-4 border-b border-slate-50">
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Authenticated</p>
-        <p className="font-black text-slate-800 truncate text-base leading-tight">
-          ようこそ、<br/>{name || "User"} 様
-        </p>
+        <div className="flex justify-between items-start">
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Authenticated</p>
+            <p className="font-black text-slate-800 truncate text-base leading-tight">
+              ようこそ、<br/>{name || "User"} 様
+            </p>
+          </div>
+          <button 
+            onClick={signOut}
+            className="mt-1 px-2 py-1 text-[10px] font-black text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md border border-red-100 transition-all flex items-center gap-1"
+            title="ログアウト"
+          >
+            <span>🚪</span>
+            <span>OUT</span>
+          </button>
+        </div>
         <p className="text-[10px] text-slate-400 truncate font-medium mt-1">{email}</p>
       </div>
 
+      {/* 3. スクロール可能なメニューエリア */}
       <div className="flex-grow overflow-y-auto px-4 space-y-2 pb-4 scrollbar-hide">
         {menuItems.map((item) => (
           <button
@@ -49,15 +64,7 @@ export const Sidebar = ({ activeTab, setActiveTab, name, email, signOut, isAdmin
         )}
       </div>
 
-      <div className="p-4 bg-slate-50/50">
-        <button
-          onClick={signOut}
-          className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-red-400 hover:bg-red-100/50 hover:text-red-600 transition-all border border-transparent hover:border-red-100"
-        >
-          <span className="text-xl">🚪</span>
-          ログアウト
-        </button>
-      </div>
+      {/* 下部のログアウトボタンは削除しました */}
     </aside>
   );
 };
