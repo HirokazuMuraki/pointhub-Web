@@ -14,6 +14,8 @@ import { UserSettings } from "./features/UserSettings";
 import { AdminPanel } from "./features/Admin";
 import { HistoryList } from "./features/History";
 import { UserProfile } from "./features/UserProfile";
+import { Footer } from "@/app/components/Layout";
+import { POLICIES } from "@/app/constants";
 
 Amplify.configure(outputs);
 const client = generateClient<Schema>();
@@ -24,6 +26,7 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [displayName, setDisplayName] = useState<string>("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [policyContent, setPolicyContent] = useState<{title: string, content: string} | null>(null);
   const userEmail = user?.signInDetails?.loginId || user?.username || "";
 
   useEffect(() => {
@@ -51,6 +54,13 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
     label: "block text-xs font-black text-slate-500 mb-2 ml-1 uppercase",
     input: "w-full px-5 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:outline-none font-bold text-slate-700",
     sectionTitle: "text-2xl font-black text-slate-800 mb-6",
+  };
+
+  // constants.ts のキーに基づいて表示内容を決定
+  const handlePolicyClick = (title: string) => {
+    if (title === "プライバシーポリシー") setPolicyContent(POLICIES.privacy);
+    if (title === "セキュリティポリシー") setPolicyContent(POLICIES.security);
+    if (title === "特定商取引法に基づく表記") setPolicyContent(POLICIES.tokusho);
   };
 
   return (
@@ -93,8 +103,8 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
         </div>
       </aside>
 
-      <main className="flex-1 p-6 lg:p-12 w-full min-h-screen">
-        <div className="max-w-7xl mx-auto w-full">
+      <main className="flex-1 p-6 lg:p-12 w-full min-h-screen flex flex-col relative text-slate-900">
+        <div className="max-w-7xl mx-auto w-full flex-grow">
           <header className="mb-6 lg:mb-10">
             <h2 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight lowercase italic">
               {menuItems.find(i => i.id === activeTab)?.label}
@@ -108,7 +118,21 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
             {activeTab === "profile" && <UserProfile client={client} userEmail={userEmail} styles={styles} />}
             {activeTab === "admin" && isAdmin && <AdminPanel client={client} styles={styles} services={services} onRefresh={() => {}} />}
           </div>
+
+          <Footer setPolicyContent={(data: any) => handlePolicyClick(data.title)} />
         </div>
+
+        {policyContent && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-6" onClick={() => setPolicyContent(null)}>
+            <div className="bg-white rounded-[2rem] p-8 max-w-2xl w-full shadow-2xl relative text-slate-900" onClick={e => e.stopPropagation()}>
+              <button onClick={() => setPolicyContent(null)} className="absolute top-6 right-6 text-2xl hover:text-red-500 transition-colors">✕</button>
+              <h3 className="text-2xl font-black mb-4">{policyContent.title}</h3>
+              <div className="text-slate-600 font-bold leading-relaxed overflow-y-auto max-h-[60vh] pr-4 whitespace-pre-wrap">
+                {policyContent.content}
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
@@ -122,7 +146,6 @@ function LandingPageSwitcher() {
 
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900 overflow-x-hidden">
-      {/* 構文エラーを回避するための標準styleタグ形式 */}
       <style dangerouslySetInnerHTML={{ __html: `
         [data-amplify-authenticator] { display: block !important; width: 100% !important; border: none !important; background: transparent !important; box-shadow: none !important; }
         .amplify-authenticator__column { width: 100% !important; max-width: 100% !important; }

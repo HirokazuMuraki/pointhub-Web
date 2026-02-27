@@ -10,12 +10,10 @@ export const Sidebar = ({ activeTab, setActiveTab, name, email, signOut, isAdmin
 
   return (
     <aside className="hidden md:flex flex-col w-72 bg-white border-r border-slate-100 h-screen sticky top-0 overflow-hidden">
-      {/* 1. ロゴエリア */}
       <div className="p-8 pb-4">
         <h1 className="text-3xl font-black text-blue-600 italic tracking-tighter">POINT HUB</h1>
       </div>
 
-      {/* 2. ユーザー情報エリア */}
       <div className="px-8 pb-6 mb-4 border-b border-slate-50">
         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Authenticated</p>
         <p className="font-black text-slate-800 truncate text-base leading-tight">
@@ -24,7 +22,6 @@ export const Sidebar = ({ activeTab, setActiveTab, name, email, signOut, isAdmin
         <p className="text-[10px] text-slate-400 truncate font-medium mt-1">{email}</p>
       </div>
 
-      {/* 3. スクロール可能なメニューエリア */}
       <div className="flex-grow overflow-y-auto px-4 space-y-2 pb-4 scrollbar-hide">
         {menuItems.map((item) => (
           <button
@@ -52,7 +49,6 @@ export const Sidebar = ({ activeTab, setActiveTab, name, email, signOut, isAdmin
         )}
       </div>
 
-      {/* 4. ログアウトボタン */}
       <div className="p-4 bg-slate-50/50">
         <button
           onClick={signOut}
@@ -68,9 +64,9 @@ export const Sidebar = ({ activeTab, setActiveTab, name, email, signOut, isAdmin
 
 export const Footer = ({ setPolicyContent }: any) => (
   <footer className="mt-20 py-10 border-t border-slate-100 flex flex-wrap gap-x-8 gap-y-4 justify-center">
-    <button onClick={() => setPolicyContent({ title: "利用規約", content: "ここに利用規約の内容が入ります..." })} className="text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors">利用規約</button>
-    <button onClick={() => setPolicyContent({ title: "プライバシーポリシー", content: "ここにプライバシーポリシーの内容が入ります..." })} className="text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors">プライバシーポリシー</button>
-    <button onClick={() => setPolicyContent({ title: "特定商取引法に基づく表記", content: "ここに表記内容が入ります..." })} className="text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors">特定商取引法に基づく表記</button>
+    <button onClick={() => setPolicyContent({ title: "プライバシーポリシー" })} className="text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors">プライバシーポリシー</button>
+    <button onClick={() => setPolicyContent({ title: "セキュリティポリシー" })} className="text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors">セキュリティポリシー</button>
+    <button onClick={() => setPolicyContent({ title: "特定商取引法に基づく表記" })} className="text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors">特定商取引法に基づく表記</button>
     <div className="w-full text-center mt-6">
       <span className="text-xs text-slate-900 font-bold tracking-tight">
         © 2026 <a 
