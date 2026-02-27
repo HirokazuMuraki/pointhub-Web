@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { AdminHistory } from "./AdminHistory";
 
 export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) => {
-  const [activeAdminTab, setActiveAdminTab] = useState("services"); // "services", "users", "history"
+  const [activeAdminTab, setActiveAdminTab] = useState("services");
   const [newServiceName, setNewServiceName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newShopId, setNewShopId] = useState("");
@@ -41,10 +41,21 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
         status: "ACTIVE",
         dummyBalance: 300
       });
-      setNewServiceName(""); setNewDescription(""); setNewShopId(""); setNewAuthKey("");
-      if (onRefresh) await onRefresh();
+
+      // 入力フォームのクリア
+      setNewServiceName(""); 
+      setNewDescription(""); 
+      setNewShopId(""); 
+      setNewAuthKey("");
+      
+      // 親コンポーネントのデータを再取得し、完了を待つことで即時反映させる
+      if (onRefresh) {
+        await onRefresh();
+      }
+      
       alert("新規サービスを登録しました");
     } catch (err) {
+      console.error("登録エラー:", err);
       alert("登録に失敗しました。");
     } finally {
       setIsProcessing(false);
@@ -71,7 +82,6 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
 
   return (
     <div className="p-4 lg:p-8">
-      {/* 管理者用タブナビゲーション */}
       <div className="flex space-x-2 mb-10 bg-slate-100/50 p-1.5 rounded-2xl w-fit">
         {[
           { id: "services", label: "サービス管理", icon: "⚙️" },
@@ -93,7 +103,6 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
         ))}
       </div>
 
-      {/* コンテンツエリア */}
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
         {activeAdminTab === "services" && (
           <div className="space-y-12">
@@ -108,19 +117,44 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className={styles.label}>サービス名 (必須)</label>
-                    <input value={newServiceName} onChange={(e) => setNewServiceName(e.target.value)} className={styles.input} placeholder="例: ショップサーブ本店" />
+                    <input 
+                      value={newServiceName} 
+                      onChange={(e) => setNewServiceName(e.target.value)} 
+                      className={styles.input} 
+                      placeholder="例: ショップサーブ本店" 
+                      autoComplete="off"
+                    />
                   </div>
                   <div>
                     <label className={styles.label}>サービス説明</label>
-                    <input value={newDescription} onChange={(e) => setNewDescription(e.target.value)} className={styles.input} placeholder="サービスに関するメモ" />
+                    <input 
+                      value={newDescription} 
+                      onChange={(e) => setNewDescription(e.target.value)} 
+                      className={styles.input} 
+                      placeholder="サービスに関するメモ" 
+                      autoComplete="off"
+                    />
                   </div>
                   <div>
                     <label className={styles.label}>ショップID</label>
-                    <input value={newShopId} onChange={(e) => setNewShopId(e.target.value)} className={styles.input} placeholder="shop-id" />
+                    <input 
+                      value={newShopId} 
+                      onChange={(e) => setNewShopId(e.target.value)} 
+                      className={styles.input} 
+                      placeholder="ショップIDを入力" 
+                      autoComplete="one-time-code"
+                    />
                   </div>
                   <div>
                     <label className={styles.label}>マスターAPIキー</label>
-                    <input type="password" value={newAuthKey} onChange={(e) => setNewAuthKey(e.target.value)} className={styles.input} placeholder="api-key" />
+                    <input 
+                      type="password" 
+                      value={newAuthKey} 
+                      onChange={(e) => setNewAuthKey(e.target.value)} 
+                      className={styles.input} 
+                      placeholder="APIキーを入力" 
+                      autoComplete="new-password"
+                    />
                   </div>
                 </div>
                 <button onClick={addService} disabled={isProcessing} className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-orange-500 transition-all shadow-xl disabled:bg-slate-300">
@@ -132,41 +166,47 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
             <section>
               <h3 className={styles.sectionTitle}>📋 稼働中のサービス一覧</h3>
               <div className="grid grid-cols-1 gap-4">
-                {services?.map((s: any) => {
-                  let settings = { shopId: "" };
-                  try { settings = JSON.parse(s.connectionSettings || "{}"); } catch(e) {}
-                  return (
-                    <div key={s.id} className="p-6 bg-white rounded-[2rem] border-2 border-slate-50 shadow-sm hover:border-orange-100 transition-all">
-                      {viewingId === s.id ? (
-                        <div className="space-y-4">
-                          <div className="flex justify-between items-start">
-                            <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-lg text-[10px] font-black italic">READ ONLY MODE</span>
-                            <button onClick={() => setViewingId(null)} className="text-slate-300 hover:text-slate-900 transition-colors">✕</button>
+                {services && services.length > 0 ? (
+                  services.map((s: any) => {
+                    let settings = { shopId: "" };
+                    try { settings = JSON.parse(s.connectionSettings || "{}"); } catch(e) {}
+                    return (
+                      <div key={s.id} className="p-6 bg-white rounded-[2rem] border-2 border-slate-50 shadow-sm hover:border-orange-100 transition-all">
+                        {viewingId === s.id ? (
+                          <div className="space-y-4">
+                            <div className="flex justify-between items-start">
+                              <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-lg text-[10px] font-black italic">READ ONLY MODE</span>
+                              <button onClick={() => setViewingId(null)} className="text-slate-300 hover:text-slate-900 transition-colors">✕</button>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div><label className="text-[10px] font-black text-slate-400 uppercase ml-2">Service Name</label><input value={viewData.name} readOnly className={`${styles.input} bg-slate-50 border-transparent text-slate-500`} /></div>
+                              <div><label className="text-[10px] font-black text-slate-400 uppercase ml-2">Shop ID</label><input value={viewData.shopId} readOnly className={`${styles.input} bg-slate-50 border-transparent text-slate-500`} /></div>
+                            </div>
+                            <button onClick={() => setViewingId(null)} className="w-full py-2 bg-slate-100 text-slate-600 text-[10px] font-black rounded-xl">詳細表示を閉じる</button>
                           </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div><label className="text-[10px] font-black text-slate-400 uppercase ml-2">Service Name</label><input value={viewData.name} readOnly className={`${styles.input} bg-slate-50 border-transparent text-slate-500`} /></div>
-                            <div><label className="text-[10px] font-black text-slate-400 uppercase ml-2">Shop ID</label><input value={viewData.shopId} readOnly className={`${styles.input} bg-slate-50 border-transparent text-slate-500`} /></div>
-                          </div>
-                          <button onClick={() => setViewingId(null)} className="w-full py-2 bg-slate-100 text-slate-600 text-[10px] font-black rounded-xl">詳細表示を閉じる</button>
-                        </div>
-                      ) : (
-                        <div className="flex justify-between items-center">
-                          <div className="flex items-center space-x-6">
-                            <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-2xl group-hover:bg-orange-50">{s.type === "DUMMY" ? "🧪" : "🛒"}</div>
-                            <div>
-                              <span className="font-black text-slate-800 text-lg block">{s.name}</span>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase">ID: {settings.shopId || "---"}</span>
+                        ) : (
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center space-x-6">
+                              <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-2xl">{s.type === "DUMMY" ? "🧪" : "🛒"}</div>
+                              <div>
+                                <span className="font-black text-slate-800 text-lg block">{s.name}</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase">ID: {settings.shopId || "---"}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <button onClick={() => startView(s)} className="px-4 py-2 text-[10px] font-black text-slate-400 hover:text-orange-500 transition-all border border-transparent hover:border-orange-50 rounded-xl">内容確認</button>
+                              <button onClick={() => deleteService(s.id)} className="px-4 py-2 text-[10px] font-black text-red-200 hover:text-red-500 transition-all">削除</button>
                             </div>
                           </div>
-                          <div className="flex items-center space-x-2">
-                            <button onClick={() => startView(s)} className="px-4 py-2 text-[10px] font-black text-slate-400 hover:text-orange-500 transition-all border border-transparent hover:border-orange-50 rounded-xl">内容確認</button>
-                            <button onClick={() => deleteService(s.id)} className="px-4 py-2 text-[10px] font-black text-red-200 hover:text-red-500 transition-all">削除</button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-12 text-slate-400 font-bold bg-white rounded-[2rem] border-2 border-dashed border-slate-100">
+                    登録されているサービスはありません
+                  </div>
+                )}
               </div>
             </section>
           </div>

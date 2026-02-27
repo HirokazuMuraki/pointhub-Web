@@ -134,8 +134,21 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
               <option value="">サービスを選択</option>
               {services.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
-            <input value={targetLoginId} onChange={(e) => setTargetLoginId(e.target.value)} className={`${styles.input} py-3 text-sm`} placeholder="会員ID / ショップID" />
-            <input type="password" value={targetPassword} onChange={(e) => setTargetPassword(e.target.value)} className={`${styles.input} py-3 text-sm`} placeholder="パスワード / API認証キー" />
+            <input 
+              value={targetLoginId} 
+              onChange={(e) => setTargetLoginId(e.target.value)} 
+              className={`${styles.input} py-3 text-sm`} 
+              placeholder="会員ID / ショップIDを入力" 
+              autoComplete="one-time-code"
+            />
+            <input 
+              type="password" 
+              value={targetPassword} 
+              onChange={(e) => setTargetPassword(e.target.value)} 
+              className={`${styles.input} py-3 text-sm`} 
+              placeholder="パスワード / API認証キーを入力" 
+              autoComplete="new-password"
+            />
             <button onClick={handleSaveCredential} className="w-full py-3.5 bg-slate-900 text-white font-black rounded-xl hover:bg-orange-500 transition-all text-xs uppercase tracking-widest">保存する</button>
           </div>
         </div>
@@ -143,8 +156,21 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
         <div className="bg-blue-50 p-6 lg:p-8 rounded-[2rem] border border-blue-100 shadow-inner">
           <h2 className={`${styles.sectionTitle} mb-4`}>✎ 情報を修正</h2>
           <div className="space-y-3">
-            <input value={targetLoginId} onChange={(e) => setTargetLoginId(e.target.value)} className={`${styles.input} py-3 text-sm bg-white`} placeholder="IDを修正" />
-            <input type="password" value={targetPassword} onChange={(e) => setTargetPassword(e.target.value)} className={`${styles.input} py-3 text-sm bg-white`} placeholder="パスワードを修正" />
+            <input 
+              value={targetLoginId} 
+              onChange={(e) => setTargetLoginId(e.target.value)} 
+              className={`${styles.input} py-3 text-sm bg-white`} 
+              placeholder="IDを修正" 
+              autoComplete="off"
+            />
+            <input 
+              type="password" 
+              value={targetPassword} 
+              onChange={(e) => setTargetPassword(e.target.value)} 
+              className={`${styles.input} py-3 text-sm bg-white`} 
+              placeholder="パスワードを修正" 
+              autoComplete="new-password"
+            />
             <div className="flex gap-2">
               <button onClick={handleSaveCredential} className="flex-1 py-3.5 bg-blue-600 text-white font-black rounded-xl text-xs uppercase tracking-widest">更新</button>
               <button onClick={resetForm} className="px-6 py-3.5 bg-white text-slate-400 font-black rounded-xl border border-slate-200 text-xs">戻る</button>

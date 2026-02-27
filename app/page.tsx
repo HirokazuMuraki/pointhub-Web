@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Amplify } from "aws-amplify";
 import { generateClient } from "aws-amplify/data";
 import { Authenticator, useAuthenticator } from "@aws-amplify/ui-react";
@@ -29,18 +29,30 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
   const [policyContent, setPolicyContent] = useState<{title: string, content: string} | null>(null);
   const userEmail = user?.signInDetails?.loginId || user?.username || "";
 
+  // サービス一覧を最新の状態にする関数
+  const refreshServices = useCallback(async () => {
+    try {
+      const { data } = await client.models.ServiceMaster.list();
+      setServices(data);
+    } catch (err) {
+      console.error("サービス一覧の取得失敗:", err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchAuthSession().then(session => {
       const groups = session.tokens?.idToken?.payload["cognito:groups"] as string[];
       if (groups?.includes("Admins")) setIsAdmin(true);
     });
-    client.models.ServiceMaster.list().then(({ data }) => setServices(data));
+    
+    // 初回読み込み
+    refreshServices();
     
     setDisplayName(userEmail.split('@')[0]);
     client.models.UserProfile.list({ filter: { email: { eq: userEmail } } }).then(({ data }) => {
       if (data.length > 0 && data[0].name) setDisplayName(data[0].name);
     });
-  }, [userEmail]);
+  }, [userEmail, refreshServices]);
 
   const menuItems = [
     { id: "exchange", label: "交換実行", icon: "🔄" },
@@ -88,7 +100,6 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-tight">ようこそ</p>
                   <p className="text-sm font-black text-slate-900 truncate mt-0.5">{displayName} 様</p>
                 </div>
-                {/* 文字を「ログアウト」に変更 */}
                 <button 
                   onClick={signOut} 
                   className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all border border-transparent hover:border-red-100 flex items-center gap-1 shrink-0 ml-2"
@@ -129,7 +140,14 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
               {activeTab === "history" && <HistoryList client={client} userEmail={userEmail} styles={styles} />}
               {activeTab === "settings" && <UserSettings services={services} client={client} userEmail={userEmail} styles={styles} />}
               {activeTab === "profile" && <UserProfile client={client} userEmail={userEmail} styles={styles} />}
-              {activeTab === "admin" && isAdmin && <AdminPanel client={client} styles={styles} services={services} onRefresh={() => {}} />}
+              {activeTab === "admin" && isAdmin && (
+                <AdminPanel 
+                  client={client} 
+                  styles={styles} 
+                  services={services} 
+                  onRefresh={refreshServices} 
+                />
+              )}
             </div>
           </div>
 
