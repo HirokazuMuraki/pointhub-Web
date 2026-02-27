@@ -48,8 +48,22 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
         authKey: finalAuthKey
       });
       if (errors) throw new Error(errors[0].message);
-      setFetchedPoints(prev => ({ ...prev, [credential.id]: data.points }));
+
+      // APIレスポンスのパースを確実に実行
+      const res = typeof data === 'string' ? JSON.parse(data) : data;
+      const latestBalance = res.point ?? res.points ?? 0;
+
+      // ① 画面表示(State)を更新
+      setFetchedPoints(prev => ({ ...prev, [credential.id]: latestBalance }));
+
+      // ② ★DynamoDBを更新（これで300を本物に書き換える）
+      await client.models.UserServiceCredential.update({
+        id: credential.id,
+        dummyBalance: latestBalance
+      });
+
     } catch (err: any) {
+      console.error(err);
       alert(`照会失敗: ${err.message}`);
     } finally {
       setIsLoading(prev => ({ ...prev, [credential.id]: false }));
@@ -91,7 +105,7 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
             let displayVal: any = "--";
             if (fetchedPoints[c.id] !== undefined) {
               displayVal = fetchedPoints[c.id];
-            } else if (c.serviceName.includes("ダミー")) {
+            } else if (c.serviceName.includes("ダミー") || c.dummyBalance !== undefined) {
               displayVal = c.dummyBalance;
             }
 
