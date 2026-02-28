@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Amplify } from "aws-amplify";
+import { sessionStorage } from "aws-amplify/utils";
+import { cognitoUserPoolsTokenProvider } from "aws-amplify/auth/cognito"; // これを追加
 import { generateClient } from "aws-amplify/data";
 import { Authenticator, useAuthenticator } from "@aws-amplify/ui-react";
 import { fetchAuthSession } from "aws-amplify/auth"; 
@@ -17,7 +19,12 @@ import { UserProfile } from "./features/UserProfile";
 import { Footer } from "@/app/components/Layout";
 import { POLICIES } from "@/app/constants";
 
+// 1. 標準の設定（outputs）のみで構成
 Amplify.configure(outputs);
+
+// 2. トークンの保存先だけを個別に sessionStorage へ変更（これがGen2の推奨方法です）
+cognitoUserPoolsTokenProvider.setKeyValueStorage(sessionStorage);
+
 const client = generateClient<Schema>();
 
 function Dashboard({ user, signOut }: { user: any, signOut: any }) {
@@ -29,7 +36,6 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
   const [policyContent, setPolicyContent] = useState<{title: string, content: string} | null>(null);
   const userEmail = user?.signInDetails?.loginId || user?.username || "";
 
-  // サービス一覧を最新の状態にする関数
   const refreshServices = useCallback(async () => {
     try {
       const { data } = await client.models.ServiceMaster.list();
@@ -45,7 +51,6 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
       if (groups?.includes("Admins")) setIsAdmin(true);
     });
     
-    // 初回読み込み
     refreshServices();
     
     setDisplayName(userEmail.split('@')[0]);
