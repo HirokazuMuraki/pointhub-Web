@@ -47,6 +47,31 @@ const schema = a.schema({
     errorMessage: a.string(),
   }).authorization((allow) => [allow.authenticated()]),
 
+  // --- 追加：ギフトマスター (管理者のみ編集可能) ---
+  GiftMaster: a.model({
+    name: a.string().required(),
+    description: a.string(),
+    pointCost: a.integer().required(),
+    stock: a.integer().required(),
+    imageUrl: a.string(),
+    isActive: a.boolean().default(true),
+  }).authorization((allow) => [
+    allow.authenticated().to(['read']),
+    allow.group("Admins")
+  ]),
+
+  // --- 追加：ギフト注文履歴 (本人のみ閲覧・管理者は全表示) ---
+  GiftOrder: a.model({
+    userEmail: a.string().required(),
+    giftId: a.id().required(),
+    giftName: a.string().required(),
+    pointSpent: a.integer().required(),
+    status: a.enum(['PENDING', 'SHIPPED', 'COMPLETED', 'CANCELLED']),
+  }).authorization((allow) => [
+    allow.owner(),
+    allow.group("Admins")
+  ]),
+
   getShopservePoints: a
     .query()
     .arguments({
