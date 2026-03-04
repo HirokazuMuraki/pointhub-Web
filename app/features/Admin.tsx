@@ -20,8 +20,8 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
   const [gifts, setGifts] = useState<any[]>([]);
   const [newGiftName, setNewGiftName] = useState("");
   const [giftDescription, setGiftDescription] = useState("");
-  const [giftPoints, setGiftPoints] = useState("1"); // 初期値を1に
-  const [giftStock, setGiftStock] = useState("1");   // 初期値を1に
+  const [giftPoints, setGiftPoints] = useState("1");
+  const [giftStock, setGiftStock] = useState("1");
   const [giftImageUrl, setGiftImageUrl] = useState("");
 
   const fetchUsers = async () => {
@@ -66,16 +66,11 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
   const addGift = async () => {
     if (!newGiftName) return alert("ギフト名を入力してください");
     
-    // 数値変換と1以上チェック
     const pointsNum = parseInt(giftPoints, 10);
     const stockNum = parseInt(giftStock, 10);
 
-    if (isNaN(pointsNum) || pointsNum < 1) {
-      return alert("必要ポイント数は1以上で入力してください");
-    }
-    if (isNaN(stockNum) || stockNum < 1) {
-      return alert("在庫数は1以上で入力してください");
-    }
+    if (isNaN(pointsNum) || pointsNum < 1) return alert("必要ポイント数は1以上で入力してください");
+    if (isNaN(stockNum) || stockNum < 1) return alert("在庫数は1以上で入力してください");
     
     setIsProcessing(true);
     try {
@@ -125,7 +120,7 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
     <div className="p-4 lg:p-8">
       <div className="flex flex-wrap gap-2 mb-10 bg-slate-100/50 p-1.5 rounded-2xl w-fit">
         {[
-          { id: "services", label: "サービス管理", icon: "⚙️" },
+          { id: "services", label: "ポイント交換", icon: "🪙" },
           { id: "gifts", label: "ギフト交換設定", icon: "🎁" },
           { id: "users", label: "ユーザー一覧", icon: "👤" },
           { id: "history", label: "履歴検索", icon: "🔍" }
@@ -147,12 +142,33 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
         {activeAdminTab === "services" && (
           <div className="space-y-12">
             <section className="bg-slate-50 p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-inner space-y-6">
-              <h3 className={styles.sectionTitle}>🏢 サービスマスター登録</h3>
+              <h3 className={styles.sectionTitle}>🪙 ポイント交換マスター登録</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div><label className={styles.label}>サービス名</label><input value={newServiceName} onChange={e=>setNewServiceName(e.target.value)} className={styles.input} placeholder="ショップサーブ本店" /></div>
                 <div><label className={styles.label}>サービス説明</label><input value={newDescription} onChange={e=>setNewDescription(e.target.value)} className={styles.input} /></div>
-                <div><label className={styles.label}>ショップID</label><input value={newShopId} onChange={e=>setNewShopId(e.target.value)} className={styles.input} /></div>
-                <div><label className={styles.label}>APIキー</label><input type="password" value={newAuthKey} onChange={e=>setNewAuthKey(e.target.value)} className={styles.input} /></div>
+                
+                {/* ショップID: オートコンプリート無効化 */}
+                <div>
+                  <label className={styles.label}>ショップID</label>
+                  <input 
+                    value={newShopId} 
+                    onChange={e=>setNewShopId(e.target.value)} 
+                    className={styles.input} 
+                    autoComplete="off"
+                  />
+                </div>
+                
+                {/* APIキー: パスワード補完を徹底防止 */}
+                <div>
+                  <label className={styles.label}>APIキー</label>
+                  <input 
+                    type="password" 
+                    value={newAuthKey} 
+                    onChange={e=>setNewAuthKey(e.target.value)} 
+                    className={styles.input} 
+                    autoComplete="new-password"
+                  />
+                </div>
               </div>
               <button onClick={addService} disabled={isProcessing} className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-orange-500 transition-all shadow-xl">
                 {isProcessing ? "登録中..." : "新規サービスを登録"}

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Amplify } from "aws-amplify";
 import { sessionStorage } from "aws-amplify/utils";
-import { cognitoUserPoolsTokenProvider } from "aws-amplify/auth/cognito"; // これを追加
+import { cognitoUserPoolsTokenProvider } from "aws-amplify/auth/cognito";
 import { generateClient } from "aws-amplify/data";
 import { Authenticator, useAuthenticator } from "@aws-amplify/ui-react";
 import { fetchAuthSession } from "aws-amplify/auth"; 
@@ -11,7 +11,7 @@ import "@aws-amplify/ui-react/styles.css";
 import type { Schema } from "@/amplify/data/resource";
 import outputs from "@/amplify_outputs.json";
 
-import { PointExchange } from "./features/PointExchange";
+import { ExchangeWrapper } from "./features/ExchangeWrapper";
 import { UserSettings } from "./features/UserSettings";
 import { AdminPanel } from "./features/Admin";
 import { HistoryList } from "./features/History";
@@ -19,12 +19,8 @@ import { UserProfile } from "./features/UserProfile";
 import { Footer } from "@/app/components/Layout";
 import { POLICIES } from "@/app/constants";
 
-// 1. 標準の設定（outputs）のみで構成
 Amplify.configure(outputs);
-
-// 2. トークンの保存先だけを個別に sessionStorage へ変更（これがGen2の推奨方法です）
 cognitoUserPoolsTokenProvider.setKeyValueStorage(sessionStorage);
-
 const client = generateClient<Schema>();
 
 function Dashboard({ user, signOut }: { user: any, signOut: any }) {
@@ -40,9 +36,7 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
     try {
       const { data } = await client.models.ServiceMaster.list();
       setServices(data);
-    } catch (err) {
-      console.error("サービス一覧の取得失敗:", err);
-    }
+    } catch (err) { console.error(err); }
   }, []);
 
   useEffect(() => {
@@ -50,15 +44,14 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
       const groups = session.tokens?.idToken?.payload["cognito:groups"] as string[];
       if (groups?.includes("Admins")) setIsAdmin(true);
     });
-    
     refreshServices();
-    
-    setDisplayName(userEmail.split('@')[0]);
     client.models.UserProfile.list({ filter: { email: { eq: userEmail } } }).then(({ data }) => {
       if (data.length > 0 && data[0].name) setDisplayName(data[0].name);
+      else setDisplayName(userEmail.split('@')[0]);
     });
   }, [userEmail, refreshServices]);
 
+  // 3. 管理設定メニューのアイコンを ⚙️ に戻しました
   const menuItems = [
     { id: "exchange", label: "交換実行", icon: "🔄" },
     { id: "history", label: "履歴一覧", icon: "📋" },
@@ -83,14 +76,10 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
     <div className="h-screen bg-[#F8FAFC] flex flex-col lg:flex-row overflow-hidden w-full">
       <header className="lg:hidden flex items-center justify-between bg-white px-6 py-4 border-b border-slate-100 sticky top-0 z-30 shrink-0">
         <h1 className="text-xl font-black italic text-slate-900">POINT<span className="text-orange-500">HUB</span></h1>
-        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-slate-900 text-2xl font-bold">
-          {isSidebarOpen ? "✕" : "☰"}
-        </button>
+        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-slate-900 text-2xl font-bold">{isSidebarOpen ? "✕" : "☰"}</button>
       </header>
 
-      {isSidebarOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
-      )}
+      {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
 
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white border-r border-slate-100 flex flex-col transform transition-transform duration-300 lg:translate-x-0 lg:static lg:h-screen shrink-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="shrink-0">
@@ -98,6 +87,7 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
             <h1 className="text-3xl font-black italic text-slate-900 leading-none">POINT<span className="text-orange-500">HUB</span></h1>
           </div>
           
+          {/* 2. 「ようこそ」のあとに名前が表示される形式に復元 */}
           <div className="px-6 py-4 mt-4 lg:mt-0">
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 relative">
               <div className="flex justify-between items-start">
@@ -105,11 +95,7 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-tight">ようこそ</p>
                   <p className="text-sm font-black text-slate-900 truncate mt-0.5">{displayName} 様</p>
                 </div>
-                <button 
-                  onClick={signOut} 
-                  className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all border border-transparent hover:border-red-100 flex items-center gap-1 shrink-0 ml-2"
-                  title="ログアウト"
-                >
+                <button onClick={signOut} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all border border-transparent hover:border-red-100 flex items-center gap-1 shrink-0 ml-2" title="ログアウト">
                   <span className="text-sm">🚪</span>
                   <span className="text-[10px] font-black whitespace-nowrap">ログアウト</span>
                 </button>
@@ -134,28 +120,18 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
         <div className="max-w-7xl mx-auto w-full min-h-full flex flex-col">
           <div className="flex-grow">
             <header className="mb-6 lg:mb-10">
-              <h2 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight lowercase italic">
-                {menuItems.find(i => i.id === activeTab)?.label}
-              </h2>
+              <h2 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight lowercase italic">{menuItems.find(i => i.id === activeTab)?.label}</h2>
               <div className="h-1.5 w-16 bg-orange-500 mt-4 rounded-full"></div>
             </header>
             
             <div className="bg-white p-4 lg:p-10 rounded-[2rem] lg:rounded-[3rem] shadow-xl border border-slate-100 min-h-[500px] w-full mb-10">
-              {activeTab === "exchange" && <PointExchange client={client} userEmail={userEmail} styles={styles} services={services} setActiveTab={setActiveTab} />}
+              {activeTab === "exchange" && <ExchangeWrapper client={client} userEmail={userEmail} styles={styles} services={services} setActiveTab={setActiveTab} />}
               {activeTab === "history" && <HistoryList client={client} userEmail={userEmail} styles={styles} />}
               {activeTab === "settings" && <UserSettings services={services} client={client} userEmail={userEmail} styles={styles} />}
               {activeTab === "profile" && <UserProfile client={client} userEmail={userEmail} styles={styles} />}
-              {activeTab === "admin" && isAdmin && (
-                <AdminPanel 
-                  client={client} 
-                  styles={styles} 
-                  services={services} 
-                  onRefresh={refreshServices} 
-                />
-              )}
+              {activeTab === "admin" && isAdmin && <AdminPanel client={client} styles={styles} services={services} onRefresh={refreshServices} />}
             </div>
           </div>
-
           <Footer setPolicyContent={(data: any) => handlePolicyClick(data.title)} />
         </div>
 
@@ -164,9 +140,7 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
             <div className="bg-white rounded-[2rem] p-8 max-w-2xl w-full shadow-2xl relative text-slate-900" onClick={e => e.stopPropagation()}>
               <button onClick={() => setPolicyContent(null)} className="absolute top-6 right-6 text-2xl hover:text-red-500 transition-colors">✕</button>
               <h3 className="text-2xl font-black mb-4">{policyContent.title}</h3>
-              <div className="text-slate-600 font-bold leading-relaxed overflow-y-auto max-h-[60vh] pr-4 whitespace-pre-wrap">
-                {policyContent.content}
-              </div>
+              <div className="text-slate-600 font-bold leading-relaxed overflow-y-auto max-h-[60vh] pr-4 whitespace-pre-wrap">{policyContent.content}</div>
             </div>
           </div>
         )}
@@ -175,6 +149,7 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
   );
 }
 
+// 1. ランディングページのデザインを完全に復元
 function LandingPageSwitcher() {
   const { authStatus, user, signOut } = useAuthenticator((context) => [context.authStatus]);
   
