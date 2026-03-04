@@ -5,26 +5,42 @@ import { AdminHistory } from "./AdminHistory";
 
 export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) => {
   const [activeAdminTab, setActiveAdminTab] = useState("services");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [allProfiles, setAllProfiles] = useState<any[]>([]);
+  
+  // --- サービス管理用ステート ---
   const [newServiceName, setNewServiceName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newShopId, setNewShopId] = useState("");
   const [newAuthKey, setNewAuthKey] = useState("");
-  const [allProfiles, setAllProfiles] = useState<any[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
-  
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [viewData, setViewData] = useState<any>(null);
 
+  // --- ギフト管理用ステート ---
+  const [gifts, setGifts] = useState<any[]>([]);
+  const [newGiftName, setNewGiftName] = useState("");
+  const [giftDescription, setGiftDescription] = useState("");
+  const [giftPoints, setGiftPoints] = useState("1"); // 初期値を1に
+  const [giftStock, setGiftStock] = useState("1");   // 初期値を1に
+  const [giftImageUrl, setGiftImageUrl] = useState("");
+
+  const fetchUsers = async () => {
+    try {
+      const { data } = await client.models.UserProfile.list();
+      if (data) setAllProfiles(data);
+    } catch (err) { console.error("ユーザー取得失敗:", err); }
+  };
+
+  const fetchGifts = async () => {
+    try {
+      const { data } = await client.models.GiftMaster.list();
+      if (data) setGifts(data);
+    } catch (err) { console.error("ギフト取得失敗:", err); }
+  };
+
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const { data } = await client.models.UserProfile.list();
-        if (data) setAllProfiles(data);
-      } catch (err) {
-        console.error("ユーザー取得失敗:", err);
-      }
-    };
     fetchUsers();
+    fetchGifts();
   }, [client]);
 
   const addService = async () => {
@@ -41,24 +57,51 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
         status: "ACTIVE",
         dummyBalance: 300
       });
-
-      // 入力フォームのクリア
-      setNewServiceName(""); 
-      setNewDescription(""); 
-      setNewShopId(""); 
-      setNewAuthKey("");
-      
-      // 親コンポーネントのデータを再取得し、完了を待つことで即時反映させる
-      if (onRefresh) {
-        await onRefresh();
-      }
-      
+      setNewServiceName(""); setNewDescription(""); setNewShopId(""); setNewAuthKey("");
+      if (onRefresh) await onRefresh();
       alert("新規サービスを登録しました");
-    } catch (err) {
-      console.error("登録エラー:", err);
-      alert("登録に失敗しました。");
-    } finally {
-      setIsProcessing(false);
+    } catch (err) { alert("サービス登録に失敗しました"); } finally { setIsProcessing(false); }
+  };
+
+  const addGift = async () => {
+    if (!newGiftName) return alert("ギフト名を入力してください");
+    
+    // 数値変換と1以上チェック
+    const pointsNum = parseInt(giftPoints, 10);
+    const stockNum = parseInt(giftStock, 10);
+
+    if (isNaN(pointsNum) || pointsNum < 1) {
+      return alert("必要ポイント数は1以上で入力してください");
+    }
+    if (isNaN(stockNum) || stockNum < 1) {
+      return alert("在庫数は1以上で入力してください");
+    }
+    
+    setIsProcessing(true);
+    try {
+      const { errors } = await client.models.GiftMaster.create({
+        name: newGiftName,
+        description: giftDescription,
+        pointCost: pointsNum,
+        stock: stockNum,
+        imageUrl: giftImageUrl,
+        isActive: true,
+      });
+      if (errors) throw new Error(errors[0].message);
+      
+      setNewGiftName(""); 
+      setGiftDescription(""); 
+      setGiftPoints("1"); 
+      setGiftStock("1"); 
+      setGiftImageUrl("");
+      
+      await fetchGifts();
+      alert("ギフトを登録しました");
+    } catch (err) { 
+      console.error(err);
+      alert("ギフト登録に失敗しました"); 
+    } finally { 
+      setIsProcessing(false); 
     }
   };
 
@@ -70,31 +113,28 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
   };
 
   const deleteService = async (id: string) => {
-    if (!confirm("⚠️ 重要：このサービスを削除してもよろしいですか？")) return;
+    if (!confirm("⚠️ このサービスを削除しますか？")) return;
     try {
       await client.models.ServiceMaster.delete({ id });
       if (onRefresh) await onRefresh();
       setViewingId(null);
-    } catch (err) {
-      console.error("Delete Error:", err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   return (
     <div className="p-4 lg:p-8">
-      <div className="flex space-x-2 mb-10 bg-slate-100/50 p-1.5 rounded-2xl w-fit">
+      <div className="flex flex-wrap gap-2 mb-10 bg-slate-100/50 p-1.5 rounded-2xl w-fit">
         {[
           { id: "services", label: "サービス管理", icon: "⚙️" },
+          { id: "gifts", label: "ギフト交換設定", icon: "🎁" },
           { id: "users", label: "ユーザー一覧", icon: "👤" },
-          { id: "history", label: "交換履歴検索", icon: "🔍" }
+          { id: "history", label: "履歴検索", icon: "🔍" }
         ].map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveAdminTab(tab.id)}
             className={`px-6 py-3 rounded-xl text-xs font-black transition-all flex items-center space-x-2 ${
-              activeAdminTab === tab.id 
-              ? "bg-white text-slate-900 shadow-sm" 
-              : "text-slate-400 hover:text-slate-600"
+              activeAdminTab === tab.id ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"
             }`}
           >
             <span>{tab.icon}</span>
@@ -106,147 +146,98 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
         {activeAdminTab === "services" && (
           <div className="space-y-12">
-            <section>
-              <div className="flex justify-between items-end mb-4">
-                <h3 className={styles.sectionTitle}>🏢 サービスマスター登録</h3>
-                <div className="hidden md:block bg-blue-50 text-blue-700 px-4 py-2 rounded-xl border border-blue-100 text-[10px] font-bold mb-4">
-                  💡 設定変更が必要な場合は、削除した後に再登録してください。
-                </div>
+            <section className="bg-slate-50 p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-inner space-y-6">
+              <h3 className={styles.sectionTitle}>🏢 サービスマスター登録</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div><label className={styles.label}>サービス名</label><input value={newServiceName} onChange={e=>setNewServiceName(e.target.value)} className={styles.input} placeholder="ショップサーブ本店" /></div>
+                <div><label className={styles.label}>サービス説明</label><input value={newDescription} onChange={e=>setNewDescription(e.target.value)} className={styles.input} /></div>
+                <div><label className={styles.label}>ショップID</label><input value={newShopId} onChange={e=>setNewShopId(e.target.value)} className={styles.input} /></div>
+                <div><label className={styles.label}>APIキー</label><input type="password" value={newAuthKey} onChange={e=>setNewAuthKey(e.target.value)} className={styles.input} /></div>
               </div>
-              <div className="bg-slate-50 p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-inner space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className={styles.label}>サービス名 (必須)</label>
-                    <input 
-                      value={newServiceName} 
-                      onChange={(e) => setNewServiceName(e.target.value)} 
-                      className={styles.input} 
-                      placeholder="例: ショップサーブ本店" 
-                      autoComplete="off"
-                    />
-                  </div>
-                  <div>
-                    <label className={styles.label}>サービス説明</label>
-                    <input 
-                      value={newDescription} 
-                      onChange={(e) => setNewDescription(e.target.value)} 
-                      className={styles.input} 
-                      placeholder="サービスに関するメモ" 
-                      autoComplete="off"
-                    />
-                  </div>
-                  <div>
-                    <label className={styles.label}>ショップID</label>
-                    <input 
-                      value={newShopId} 
-                      onChange={(e) => setNewShopId(e.target.value)} 
-                      className={styles.input} 
-                      placeholder="ショップIDを入力" 
-                      autoComplete="one-time-code"
-                    />
-                  </div>
-                  <div>
-                    <label className={styles.label}>マスターAPIキー</label>
-                    <input 
-                      type="password" 
-                      value={newAuthKey} 
-                      onChange={(e) => setNewAuthKey(e.target.value)} 
-                      className={styles.input} 
-                      placeholder="APIキーを入力" 
-                      autoComplete="new-password"
-                    />
-                  </div>
-                </div>
-                <button onClick={addService} disabled={isProcessing} className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-orange-500 transition-all shadow-xl disabled:bg-slate-300">
-                  {isProcessing ? "登録中..." : "新規サービスをシステムに登録"}
-                </button>
-              </div>
+              <button onClick={addService} disabled={isProcessing} className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-orange-500 transition-all shadow-xl">
+                {isProcessing ? "登録中..." : "新規サービスを登録"}
+              </button>
             </section>
-
-            <section>
-              <h3 className={styles.sectionTitle}>📋 稼働中のサービス一覧</h3>
-              <div className="grid grid-cols-1 gap-4">
-                {services && services.length > 0 ? (
-                  services.map((s: any) => {
-                    let settings = { shopId: "" };
-                    try { settings = JSON.parse(s.connectionSettings || "{}"); } catch(e) {}
-                    return (
-                      <div key={s.id} className="p-6 bg-white rounded-[2rem] border-2 border-slate-50 shadow-sm hover:border-orange-100 transition-all">
-                        {viewingId === s.id ? (
-                          <div className="space-y-4">
-                            <div className="flex justify-between items-start">
-                              <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-lg text-[10px] font-black italic">READ ONLY MODE</span>
-                              <button onClick={() => setViewingId(null)} className="text-slate-300 hover:text-slate-900 transition-colors">✕</button>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div><label className="text-[10px] font-black text-slate-400 uppercase ml-2">Service Name</label><input value={viewData.name} readOnly className={`${styles.input} bg-slate-50 border-transparent text-slate-500`} /></div>
-                              <div><label className="text-[10px] font-black text-slate-400 uppercase ml-2">Shop ID</label><input value={viewData.shopId} readOnly className={`${styles.input} bg-slate-50 border-transparent text-slate-500`} /></div>
-                            </div>
-                            <button onClick={() => setViewingId(null)} className="w-full py-2 bg-slate-100 text-slate-600 text-[10px] font-black rounded-xl">詳細表示を閉じる</button>
-                          </div>
-                        ) : (
-                          <div className="flex justify-between items-center">
-                            <div className="flex items-center space-x-6">
-                              <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-2xl">{s.type === "DUMMY" ? "🧪" : "🛒"}</div>
-                              <div>
-                                <span className="font-black text-slate-800 text-lg block">{s.name}</span>
-                                <span className="text-[10px] font-bold text-slate-400 uppercase">ID: {settings.shopId || "---"}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <button onClick={() => startView(s)} className="px-4 py-2 text-[10px] font-black text-slate-400 hover:text-orange-500 transition-all border border-transparent hover:border-orange-50 rounded-xl">内容確認</button>
-                              <button onClick={() => deleteService(s.id)} className="px-4 py-2 text-[10px] font-black text-red-200 hover:text-red-500 transition-all">削除</button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="text-center py-12 text-slate-400 font-bold bg-white rounded-[2rem] border-2 border-dashed border-slate-100">
-                    登録されているサービスはありません
+            <section className="space-y-4">
+              <h3 className={styles.sectionTitle}>📋 稼働中サービス一覧</h3>
+              {services.map((s: any) => (
+                <div key={s.id} className="p-6 bg-white rounded-3xl border-2 border-slate-50 flex justify-between items-center shadow-sm">
+                  <span className="font-black text-slate-800">{s.name}</span>
+                  <div className="flex space-x-2">
+                    <button onClick={() => startView(s)} className="px-4 py-2 text-[10px] font-black text-slate-400 border border-slate-100 rounded-xl">詳細</button>
+                    <button onClick={() => deleteService(s.id)} className="px-4 py-2 text-[10px] font-black text-red-200 hover:text-red-500">削除</button>
                   </div>
-                )}
+                </div>
+              ))}
+            </section>
+          </div>
+        )}
+
+        {activeAdminTab === "gifts" && (
+          <div className="space-y-12">
+            <section className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm space-y-6">
+              <h3 className={styles.sectionTitle}>🎁 新規ギフト登録</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="md:col-span-2"><label className={styles.label}>ギフト名</label><input value={newGiftName} onChange={e=>setNewGiftName(e.target.value)} className={styles.input} /></div>
+                <div className="md:col-span-2"><label className={styles.label}>商品説明文</label><textarea value={giftDescription} onChange={e=>setGiftDescription(e.target.value)} className={`${styles.input} h-24 py-3`} /></div>
+                
+                <div>
+                  <label className={styles.label}>必要ポイント数</label>
+                  <input 
+                    type="number" 
+                    min="1"
+                    value={giftPoints} 
+                    onInput={(e: any) => setGiftPoints(e.target.value)}
+                    className={styles.input} 
+                  />
+                </div>
+                <div>
+                  <label className={styles.label}>在庫数</label>
+                  <input 
+                    type="number" 
+                    min="1"
+                    value={giftStock} 
+                    onInput={(e: any) => setGiftStock(e.target.value)}
+                    className={styles.input} 
+                  />
+                </div>
+                
+                <div className="md:col-span-2"><label className={styles.label}>画像URL</label><input value={giftImageUrl} onChange={e=>setGiftImageUrl(e.target.value)} className={styles.input} placeholder="https://..." /></div>
+              </div>
+              <button onClick={addGift} disabled={isProcessing} className="w-full py-4 bg-orange-500 text-white font-black rounded-2xl shadow-lg hover:bg-slate-900 transition-all">ギフトを登録する</button>
+            </section>
+            
+            <section className="space-y-4">
+              <h3 className={styles.sectionTitle}>📋 登録済みギフト一覧</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {gifts.map((g) => (
+                  <div key={g.id} className="p-4 bg-white rounded-3xl border-2 border-slate-50 flex items-center space-x-4 shadow-sm">
+                    <div className="w-16 h-16 bg-slate-100 rounded-xl overflow-hidden flex-shrink-0">{g.imageUrl ? <img src={g.imageUrl} className="w-full h-full object-cover" /> : "🎁"}</div>
+                    <div className="flex-1">
+                      <h4 className="font-black text-slate-800">{g.name}</h4>
+                      <p className="text-[10px] text-orange-500 font-bold">{g.pointCost} pts / 在庫: {g.stock}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </section>
           </div>
         )}
 
         {activeAdminTab === "users" && (
-          <section>
-            <h3 className={styles.sectionTitle}>👤 利用ユーザー一覧</h3>
-            <div className="bg-slate-900 rounded-[2.5rem] overflow-hidden shadow-2xl">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-sm">
-                  <thead>
-                    <tr className="bg-slate-800 text-slate-400">
-                      <th className="p-6 text-[10px] font-black uppercase">ユーザー名</th>
-                      <th className="p-6 text-[10px] font-black uppercase">メールアドレス</th>
-                      <th className="p-6 text-[10px] font-black uppercase text-right">住所</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800">
-                    {allProfiles.map((u: any) => (
-                      <tr key={u.id} className="hover:bg-slate-800/50 transition-colors">
-                        <td className="p-6 font-black text-white">{u.name || "未設定"}</td>
-                        <td className="p-6 font-bold text-slate-400">{u.email}</td>
-                        <td className="p-6 text-right">
-                          <span className="text-[10px] font-bold text-slate-500 block">
-                            {u.zipCode ? `[${u.zipCode}] ` : ""}{u.address || "住所未登録"}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+          <section className="bg-slate-900 rounded-[2.5rem] overflow-hidden shadow-2xl overflow-x-auto">
+            <table className="w-full text-left text-sm text-slate-400">
+              <thead><tr className="bg-slate-800 text-[10px] font-black uppercase"><th className="p-6">名前</th><th className="p-6">メール</th><th className="p-6 text-right">住所</th></tr></thead>
+              <tbody className="divide-y divide-slate-800">
+                {allProfiles.map((u: any) => (
+                  <tr key={u.id}><td className="p-6 font-black text-white">{u.name || "未設定"}</td><td className="p-6">{u.email}</td><td className="p-6 text-right text-[10px]">{u.address || "未設定"}</td></tr>
+                ))}
+              </tbody>
+            </table>
           </section>
         )}
 
-        {activeAdminTab === "history" && (
-          <AdminHistory client={client} styles={styles} />
-        )}
+        {activeAdminTab === "history" && <AdminHistory client={client} styles={styles} />}
       </div>
     </div>
   );
