@@ -239,8 +239,14 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
                 </div>
               </div>
               <div className="flex gap-3">
-                <button onClick={handleGiftSubmit} className="flex-1 py-4 bg-orange-500 text-white font-black rounded-2xl shadow-lg hover:bg-slate-900 transition-all">保存</button>
-                {(isEditingGift || newGiftName) && <button onClick={resetGiftForm} className="px-8 py-4 bg-slate-100 rounded-2xl font-black text-slate-400">リセット</button>}
+                <button onClick={handleGiftSubmit} className="flex-1 py-4 bg-orange-500 text-white font-black rounded-2xl shadow-lg hover:bg-slate-900 transition-all">
+                  {isEditingGift ? "保存" : "登録"}
+                </button>
+                {isEditingGift ? (
+                  <button onClick={resetGiftForm} className="px-8 py-4 bg-slate-100 rounded-2xl font-black text-slate-400 hover:bg-slate-200 transition-all">キャンセル</button>
+                ) : (
+                  newGiftName && <button onClick={resetGiftForm} className="px-8 py-4 bg-slate-100 rounded-2xl font-black text-slate-400">リセット</button>
+                )}
               </div>
             </section>
             <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -253,7 +259,7 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
                     <h4 className="font-black text-slate-800 truncate">{g.name}</h4>
                     <p className="text-[10px] text-orange-500 font-bold">{g.pointCost} pts / 在庫: {g.stock}</p>
                   </div>
-                  <button onClick={() => startEditGift(g)} className="px-3 py-1.5 text-[10px] font-black text-slate-400 border border-slate-100 rounded-lg">編集</button>
+                  <button onClick={() => startEditGift(g)} className="px-3 py-1.5 text-[10px] font-black text-slate-400 border border-slate-100 rounded-lg hover:bg-slate-50 transition-all">編集</button>
                 </div>
               ))}
             </section>
