@@ -46,6 +46,13 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
   const handleGiftExchange = async () => {
     if (!selectedGift || !selectedServiceId) return;
     
+    if (selectedGift.stock < 1) {
+      alert("申し訳ありません、このギフトは現在在庫切れです。");
+      setSelectedGift(null);
+      fetchGifts();
+      return;
+    }
+    
     const cred = userCredentials.find(c => c.serviceId === selectedServiceId);
     if (!cred || (cred.dummyBalance || 0) < selectedGift.pointCost) {
       return alert("選択したサービスのポイント残高が不足しています。");
@@ -55,7 +62,6 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
 
     setIsProcessing(true);
     try {
-      // 修正された新しいフィールド名で送信
       const { errors } = await client.models.GiftOrder.create({
         userEmail: userEmail,
         giftId: selectedGift.id,
@@ -89,25 +95,49 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
         {exchangeTab === "points" ? (
           <PointExchange client={client} userEmail={userEmail} styles={styles} services={services} setActiveTab={setActiveTab} />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
             {gifts.map((gift) => (
-              <div key={gift.id} className="bg-white rounded-[1.5rem] border border-slate-100 p-4 flex flex-col">
-                {/* 画像表示エリアを追加 */}
-                <div className="aspect-square w-full mb-4 bg-slate-50 rounded-[1.2rem] overflow-hidden border border-slate-50 flex items-center justify-center">
+              <div key={gift.id} className="bg-white rounded-[2rem] border-2 border-slate-50 p-5 flex flex-col relative overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                {gift.stock < 1 && (
+                  <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center pointer-events-none">
+                    <span className="bg-red-500 text-white text-[10px] font-black px-4 py-1.5 rounded-full shadow-lg transform -rotate-12">OUT OF STOCK</span>
+                  </div>
+                )}
+
+                <div className="aspect-square w-full mb-5 bg-slate-50 rounded-[1.5rem] overflow-hidden border border-slate-50 flex items-center justify-center">
                   {gift.imageUrl ? (
                     <img src={gift.imageUrl} alt={gift.name} className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-[24px]">🎁</span>
+                    <span className="text-[32px]">🎁</span>
                   )}
                 </div>
                 
-                <h4 className="text-xs font-black text-slate-800 line-clamp-1">{gift.name}</h4>
-                <p className="text-[10px] text-orange-500 mt-1 font-black">{gift.pointCost.toLocaleString()} pts</p>
+                {/* ギフト名: text-xs -> text-sm (少し大きく) */}
+                <h4 className="text-sm font-black text-slate-800 line-clamp-2 min-h-[2.5rem] leading-tight">{gift.name}</h4>
+                
+                <div className="flex justify-between items-end mt-3">
+                  {/* ポイント数: text-[10px] -> text-[14px] (強調) */}
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1">Cost</span>
+                    <p className="text-[16px] text-orange-500 font-black leading-none">{gift.pointCost.toLocaleString()}<span className="text-[10px] ml-0.5">pts</span></p>
+                  </div>
+                  
+                  {/* 在庫数: text-[9px] -> text-[11px] */}
+                  <div className={`px-3 py-1.5 rounded-xl font-black text-[11px] ${gift.stock > 0 ? 'bg-slate-100 text-slate-500' : 'bg-red-50 text-red-500'}`}>
+                    在庫: {gift.stock}
+                  </div>
+                </div>
+                
                 <button 
                   onClick={() => setSelectedGift(gift)} 
-                  className="w-full mt-4 bg-slate-900 hover:bg-orange-500 text-white py-2.5 rounded-xl text-[9px] font-black transition-colors"
+                  disabled={gift.stock < 1}
+                  className={`w-full mt-5 py-3.5 rounded-2xl text-[11px] font-black transition-all ${
+                    gift.stock > 0 
+                      ? "bg-slate-900 hover:bg-orange-500 text-white shadow-lg active:scale-95" 
+                      : "bg-slate-100 text-slate-300 cursor-not-allowed"
+                  }`}
                 >
-                  交換する
+                  {gift.stock > 0 ? "交換を申し込む" : "在庫切れ"}
                 </button>
               </div>
             ))}
@@ -117,36 +147,36 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
 
       {selectedGift && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 space-y-6">
-            <h3 className="text-lg font-black text-center text-slate-900">支払い元選択</h3>
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 space-y-6 animate-in zoom-in-95 duration-200 shadow-2xl">
+            <h3 className="text-xl font-black text-center text-slate-900">支払い元選択</h3>
             
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-              <div className="flex items-center space-x-3">
-                <div className="w-12 h-12 rounded-lg bg-white flex items-center justify-center border border-slate-100">
-                  {selectedGift.imageUrl ? <img src={selectedGift.imageUrl} className="w-8 h-8 object-contain" /> : "🎁"}
+            <div className="bg-slate-50 p-5 rounded-[1.5rem] border border-slate-100">
+              <div className="flex items-center space-x-4">
+                <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center border border-slate-100 overflow-hidden shrink-0">
+                  {selectedGift.imageUrl ? <img src={selectedGift.imageUrl} className="w-full h-full object-cover" /> : <span className="text-2xl">🎁</span>}
                 </div>
                 <div>
-                  <p className="text-xs font-black text-slate-800">{selectedGift.name}</p>
-                  <p className="text-[10px] text-orange-500 font-bold">{selectedGift.pointCost.toLocaleString()} pts</p>
+                  <p className="text-sm font-black text-slate-800 leading-tight">{selectedGift.name}</p>
+                  <p className="text-lg text-orange-500 font-black">{selectedGift.pointCost.toLocaleString()} pts</p>
                 </div>
               </div>
             </div>
 
             <div>
-              <label className="block text-[9px] font-black text-slate-400 mb-1.5 ml-1 uppercase">消費するサービスを選択</label>
-              <select className="w-full p-3 bg-white rounded-xl border-2 border-slate-100 text-xs font-bold focus:border-orange-500 outline-none transition-all" value={selectedServiceId} onChange={(e) => setSelectedServiceId(e.target.value)}>
+              <label className="block text-[10px] font-black text-slate-400 mb-2 ml-1 uppercase tracking-wider">消費するサービスを選択</label>
+              <select className="w-full p-4 bg-white rounded-2xl border-2 border-slate-100 text-sm font-bold focus:border-orange-500 outline-none transition-all appearance-none cursor-pointer" value={selectedServiceId} onChange={(e) => setSelectedServiceId(e.target.value)}>
                 {userCredentials.map((c) => (
                   <option key={c.id} value={c.serviceId}>{c.serviceName} (残高: {c.dummyBalance} pts)</option>
                 ))}
               </select>
             </div>
 
-            <div className="flex gap-2">
-              <button onClick={() => setSelectedGift(null)} className="flex-1 py-3 bg-slate-100 text-slate-400 font-black rounded-xl text-[10px] hover:bg-slate-200 transition-colors">戻る</button>
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setSelectedGift(null)} className="flex-1 py-4 bg-slate-100 text-slate-400 font-black rounded-2xl text-xs hover:bg-slate-200 transition-colors">戻る</button>
               <button 
                 onClick={handleGiftExchange} 
                 disabled={isProcessing}
-                className={`flex-1 py-3 bg-slate-900 text-white font-black rounded-xl text-[10px] shadow-lg shadow-slate-200 hover:bg-orange-600 transition-colors ${isProcessing ? 'opacity-50' : ''}`}
+                className={`flex-1 py-4 bg-slate-900 text-white font-black rounded-2xl text-xs shadow-xl shadow-slate-200 hover:bg-orange-600 transition-colors ${isProcessing ? 'opacity-50' : ''}`}
               >
                 {isProcessing ? "処理中..." : "確定する"}
               </button>
