@@ -9,12 +9,14 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
   const [allProfiles, setAllProfiles] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   
+  // --- サービス管理用ステート ---
   const [newServiceName, setNewServiceName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newShopId, setNewShopId] = useState("");
   const [newAuthKey, setNewAuthKey] = useState("");
   const [viewingId, setViewingId] = useState<string | null>(null);
 
+  // --- ギフト管理用ステート ---
   const [gifts, setGifts] = useState<any[]>([]);
   const [isEditingGift, setIsEditingGift] = useState(false);
   const [editingGiftId, setEditingGiftId] = useState<string | null>(null);
@@ -57,51 +59,56 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
     else window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // --- 注文承認ロジック (serviceId特定版) ---
   const approveOrder = async (order: any) => {
-    const sourceName = order.orderSourceName || "不明なショップ";
-    const sourceId = order.orderSourceId;
-
-    if (!confirm(`${order.giftName} の交換を承認します。\n減算先: ${sourceName}\nよろしいですか？`)) return;
+    const targetInfo = order.serviceName ? `${order.serviceName}` : `ID: ${order.serviceId}`;
+    if (!confirm(`${order.giftName} の交換を承認します。\n減算先: ${targetInfo}\nポイントと在庫を減算してよろしいですか？`)) return;
     
     setIsProcessing(true);
     try {
+      // 1. ギフト情報の取得
       const { data: gift } = await client.models.GiftMaster.get({ id: order.giftId });
       if (!gift || gift.stock < 1) throw new Error("在庫がありません");
 
+      // 2. ユーザーのCredentialから、注文に紐づくserviceIdを厳密に特定
       const { data: creds } = await client.models.UserServiceCredential.list({
         filter: { userEmail: { eq: order.userEmail } }
       });
 
-      const targetCred = creds.find((c: any) => c.serviceId === sourceId);
-      
+      // 修正ポイント: 最初の要素ではなく、order.serviceId と一致するものを探す
+      const targetCred = creds.find((c: any) => c.serviceId === order.serviceId);
+
       if (!targetCred) {
-        throw new Error(`指定された支払い元の連携情報 (${sourceName}) が見つかりません。`);
+        throw new Error(`指定されたサービス(ID: ${order.serviceId})の連携情報が見つかりません。`);
       }
 
       if ((targetCred.dummyBalance || 0) < order.pointSpent) {
-        throw new Error(`ポイント残高が不足しています (${targetCred.serviceName})`);
+        throw new Error(`ポイント残高が不足しています (${targetCred.serviceName}: ${targetCred.dummyBalance} pts)`);
       }
 
+      // 3. 在庫の減算
       await client.models.GiftMaster.update({
         id: gift.id,
         stock: gift.stock - 1
       });
 
+      // 4. ポイントの減算 (特定したCredential IDに対して実行)
       await client.models.UserServiceCredential.update({
         id: targetCred.id,
         dummyBalance: (targetCred.dummyBalance || 0) - order.pointSpent
       });
 
+      // 5. ステータスを完了に更新
       await client.models.GiftOrder.update({
         id: order.id,
         status: "COMPLETED"
       });
 
-      alert(`承認完了しました。${targetCred.serviceName} からポイントを減算しました。`);
+      alert(`承認完了しました。\n${targetCred.serviceName} から ${order.pointSpent} pts を減算しました。`);
       fetchOrders();
       fetchGifts();
     } catch (err: any) {
-      alert("エラー: " + err.message);
+      alert("承認エラー: " + err.message);
     } finally {
       setIsProcessing(false);
     }
@@ -175,7 +182,7 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
     <div className="p-4 lg:p-8">
       <div className="flex flex-wrap gap-2 mb-10 bg-slate-100/50 p-1.5 rounded-2xl w-fit">
         {[
-          { id: "services", label: "ポイント交換マスター", icon: "🪙" },
+          { id: "services", label: "ポイント交換", icon: "🪙" },
           { id: "gifts", label: "ギフト管理", icon: "🎁" },
           { id: "orders", label: "注文管理", icon: "🚚" },
           { id: "users", label: "ユーザー一覧", icon: "👤" },
@@ -226,29 +233,15 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
                 <div className="md:col-span-2"><label className={styles.label}>ギフト名</label><input value={newGiftName} onChange={e=>setNewGiftName(e.target.value)} className={styles.input} /></div>
                 <div><label className={styles.label}>ポイント</label><input type="number" value={giftPoints} onInput={(e: any) => setGiftPoints(e.target.value)} className={styles.input} /></div>
                 <div><label className={styles.label}>在庫</label><input type="number" value={giftStock} onInput={(e: any) => setGiftStock(e.target.value)} className={styles.input} /></div>
-                <div className="md:col-span-2">
-                  <label className={styles.label}>画像URL (https://...)</label>
-                  <div className="flex gap-4 items-end">
-                    <div className="flex-1">
-                      <input value={giftImageUrl} onChange={e=>setGiftImageUrl(e.target.value)} className={styles.input} placeholder="https://example.com/image.jpg" />
-                    </div>
-                    <div className="w-16 h-16 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0">
-                      {giftImageUrl ? <img src={giftImageUrl} className="w-full h-full object-cover" /> : <span className="text-xl">🖼️</span>}
-                    </div>
-                  </div>
-                </div>
               </div>
               <div className="flex gap-3">
                 <button onClick={handleGiftSubmit} className="flex-1 py-4 bg-orange-500 text-white font-black rounded-2xl shadow-lg hover:bg-slate-900 transition-all">保存</button>
-                {(isEditingGift || newGiftName) && <button onClick={resetGiftForm} className="px-8 py-4 bg-slate-100 rounded-2xl font-black text-slate-400">リセット</button>}
+                {isEditingGift && <button onClick={resetGiftForm} className="px-8 py-4 bg-slate-100 rounded-2xl">消去</button>}
               </div>
             </section>
             <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {gifts.map((g) => (
                 <div key={g.id} className="p-4 bg-white rounded-3xl border-2 border-slate-50 flex items-center shadow-sm">
-                  <div className="w-12 h-12 bg-slate-50 rounded-lg overflow-hidden border border-slate-100 mr-4 flex-shrink-0 flex items-center justify-center">
-                    {g.imageUrl ? <img src={g.imageUrl} className="w-full h-full object-cover" /> : <span className="text-xl">🎁</span>}
-                  </div>
                   <div className="flex-1 min-w-0 mr-4">
                     <h4 className="font-black text-slate-800 truncate">{g.name}</h4>
                     <p className="text-[10px] text-orange-500 font-bold">{g.pointCost} pts / 在庫: {g.stock}</p>
@@ -263,14 +256,14 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
         {activeAdminTab === "orders" && (
           <section className="space-y-6">
             <h3 className={styles.sectionTitle}>🚚 ギフト注文管理</h3>
-            <div className="bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden shadow-sm overflow-x-auto">
-              <table className="w-full text-left text-sm min-w-[800px]">
+            <div className="bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden shadow-sm">
+              <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase">
                   <tr>
                     <th className="p-6">注文日時</th>
                     <th className="p-6">ユーザー</th>
                     <th className="p-6">ギフト内容</th>
-                    <th className="p-6">交換元ショップ</th>
+                    <th className="p-6">交換元サービス</th>
                     <th className="p-6 text-center">ステータス</th>
                     <th className="p-6 text-right">アクション</th>
                   </tr>
@@ -284,10 +277,10 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
                         <span className="font-black text-slate-900">{o.giftName}</span><br/>
                         <span className="text-[10px] text-orange-500 font-bold">{o.pointSpent} pts</span>
                       </td>
+                      {/* 追加：交換元サービスの情報表示 */}
                       <td className="p-6">
-                        <span className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-black">
-                          {o.orderSourceName || "---"}
-                        </span>
+                        <span className="font-bold text-slate-700">{o.serviceName || "---"}</span><br/>
+                        <span className="text-[9px] font-mono text-slate-400">ID: {o.serviceId || "未記録"}</span>
                       </td>
                       <td className="p-6 text-center">
                         <span className={`px-3 py-1 rounded-full text-[9px] font-black ${o.status === 'PENDING' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>

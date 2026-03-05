@@ -63,8 +63,14 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
     const toCred = credentials.find(c => c.id === toCredId);
     const val = parseInt(amount);
 
-    if (!val || val <= 0 || !fromCred || !toCred) return alert("入力内容を確認してください");
-    if ((fromCred.dummyBalance || 0) < val) return alert(`残高不足です（現在: ${fromCred.dummyBalance || 0}pt）`);
+    // バリデーションの強化：1以上の数値であることを必須に
+    if (!val || val < 1 || !fromCred || !toCred) {
+      return alert("交換ポイント数は1ポイント以上で入力してください");
+    }
+    
+    if ((fromCred.dummyBalance || 0) < val) {
+      return alert(`残高不足です（現在: ${fromCred.dummyBalance || 0}pt）`);
+    }
 
     if (!confirm("交換を実行しますか？")) return;
     setIsProcessing(true);
@@ -90,7 +96,11 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
       }
 
       await client.models.ExchangeTransaction.create({
-        userEmail, fromServiceName: fromCred.serviceName, toServiceName: toCred.serviceName, amount: val, status: "COMPLETED"
+        userEmail, 
+        fromServiceName: fromCred.serviceName, 
+        toServiceName: toCred.serviceName, 
+        amount: val, 
+        status: "COMPLETED"
       });
 
       alert("交換完了！");
@@ -127,9 +137,20 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
         </div>
         <div className="pt-2 border-t">
           <label className={styles.label}>交換数</label>
-          <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className={styles.input} />
+          <input 
+            type="number" 
+            min="1" 
+            value={amount} 
+            onChange={(e) => setAmount(e.target.value)} 
+            className={styles.input} 
+            placeholder="1以上の数値を入力"
+          />
         </div>
-        <button onClick={handleExchange} disabled={isProcessing} className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl">
+        <button 
+          onClick={handleExchange} 
+          disabled={isProcessing} 
+          className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl transition-all hover:bg-orange-500 disabled:bg-slate-200"
+        >
           {isProcessing ? "実行中..." : "交換を実行する"}
         </button>
       </div>

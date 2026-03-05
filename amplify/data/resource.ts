@@ -47,7 +47,6 @@ const schema = a.schema({
     errorMessage: a.string(),
   }).authorization((allow) => [allow.authenticated()]),
 
-  // ギフトマスター (管理者のみ編集可能)
   GiftMaster: a.model({
     name: a.string().required(),
     description: a.string(),
@@ -60,12 +59,14 @@ const schema = a.schema({
     allow.group("Admins")
   ]),
 
-  // ギフト注文履歴
   GiftOrder: a.model({
     userEmail: a.string().required(),
     giftId: a.id().required(),
     giftName: a.string().required(),
     pointSpent: a.integer().required(),
+    // 名前を変更して強制同期させる
+    orderSourceId: a.string(), 
+    orderSourceName: a.string(),
     status: a.enum(['PENDING', 'SHIPPED', 'COMPLETED', 'CANCELLED']),
   }).authorization((allow) => [
     allow.owner(),
