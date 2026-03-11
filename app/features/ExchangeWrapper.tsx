@@ -46,37 +46,54 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
   const handleGiftExchange = async () => {
     if (!selectedGift || !selectedServiceId) return;
     
-    if (selectedGift.stock < 1) {
+    // 1. 最新の在庫をチェック
+    const { data: latestGift } = await client.models.GiftMaster.get({ id: selectedGift.id });
+    if (!latestGift || latestGift.stock < 1) {
       alert("申し訳ありません、このギフトは現在在庫切れです。");
       setSelectedGift(null);
       fetchGifts();
       return;
     }
     
+    // 2. ポイント残高をチェック
     const cred = userCredentials.find(c => c.serviceId === selectedServiceId);
-    if (!cred || (cred.dummyBalance || 0) < selectedGift.pointCost) {
+    if (!cred || (cred.dummyBalance || 0) < latestGift.pointCost) {
       return alert("選択したサービスのポイント残高が不足しています。");
     }
 
-    if (!confirm(`${selectedGift.name} (${selectedGift.pointCost} pts) と交換しますか？\n消費元: ${cred.serviceName}`)) return;
+    if (!confirm(`${latestGift.name} (${latestGift.pointCost} pts) と交換しますか？\n確定すると即座にポイントが消費されます。`)) return;
 
     setIsProcessing(true);
     try {
+      // 3. 在庫を減算
+      await client.models.GiftMaster.update({
+        id: latestGift.id,
+        stock: latestGift.stock - 1
+      });
+
+      // 4. ユーザーのポイント残高を減算
+      await client.models.UserServiceCredential.update({
+        id: cred.id,
+        dummyBalance: (cred.dummyBalance || 0) - latestGift.pointCost
+      });
+
+      // 5. 注文レコードを作成 (status を COMPLETED に)
       const { errors } = await client.models.GiftOrder.create({
         userEmail: userEmail,
-        giftId: selectedGift.id,
-        giftName: selectedGift.name,
-        pointSpent: selectedGift.pointCost,
+        giftId: latestGift.id,
+        giftName: latestGift.name,
+        pointSpent: latestGift.pointCost,
         orderSourceId: cred.serviceId,
         orderSourceName: cred.serviceName,
-        status: "PENDING",
+        status: "COMPLETED",
       });
 
       if (errors) throw new Error(errors[0].message);
       
-      alert("交換を申し込みました！");
+      alert("交換が完了しました！");
       setSelectedGift(null);
-      await fetchGifts();
+      // 在庫と残高を最新状態に更新
+      await Promise.all([fetchGifts(), fetchCredentials()]);
     } catch (err: any) {
       alert(`エラーが発生しました: ${err.message}`);
     } finally {
@@ -112,18 +129,15 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
                   )}
                 </div>
                 
-                {/* ギフト名: text-xs -> text-sm (少し大きく) */}
                 <h4 className="text-sm font-black text-slate-800 line-clamp-2 min-h-[2.5rem] leading-tight">{gift.name}</h4>
                 
                 <div className="flex justify-between items-end mt-3">
-                  {/* ポイント数: text-[10px] -> text-[14px] (強調) */}
                   <div className="flex flex-col">
                     <span className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1">Cost</span>
                     <p className="text-[16px] text-orange-500 font-black leading-none">{gift.pointCost.toLocaleString()}<span className="text-[10px] ml-0.5">pts</span></p>
                   </div>
                   
-                  {/* 在庫数: text-[9px] -> text-[11px] */}
-                  <div className={`px-3 py-1.5 rounded-xl font-black text-[11px] ${gift.stock > 0 ? 'bg-slate-100 text-slate-500' : 'bg-red-50 text-red-500'}`}>
+                  <div className={`px-3 py-1.5 rounded-xl font-black text-[11px] ${gift.stock > 0 ? 'bg-slate-100 text-slate-500' : 'bg-red-50 text-red-400'}`}>
                     在庫: {gift.stock}
                   </div>
                 </div>
