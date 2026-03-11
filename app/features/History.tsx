@@ -34,7 +34,6 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
         const txData = txRes.data || [];
         const orderData = (orderRes.data || []).map((o: any) => ({
           ...o,
-          // 修正：orderSourceName (ショップ名) を表示に使用。無い場合は "🎁 GIFT"
           fromServiceName: o.orderSourceName || "🎁 GIFT",
           toServiceName: o.giftName,
           amount: o.pointSpent,
@@ -83,12 +82,26 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [transactions, appliedFilter]);
 
+  // ステータス表示用のヘルパー関数
+  const getStatusDisplay = (t: any) => {
+    if (!t.isGift) return { label: "完了", class: "bg-slate-100 text-slate-500 border-slate-200" };
+    
+    switch (t.status) {
+      case "PENDING":
+        return { label: "配送準備", class: "bg-orange-100 text-orange-600 border-orange-200" };
+      case "SHIPPED":
+        return { label: "配送済", class: "bg-green-100 text-green-600 border-green-200" };
+      default:
+        return { label: "完了", class: "bg-slate-100 text-slate-500 border-slate-200" };
+    }
+  };
+
   const exportCSV = () => {
     const headers = ["日付,種類,交換元,交換先,ポイント,ステータス\n"];
     const rows = filteredTransactions.map(t => {
       const type = t.isGift ? "ギフト交換" : "ポイント交換";
-      const statusLabel = t.status || "完了";
-      return `${new Date(t.createdAt).toLocaleString()},${type},${t.fromServiceName},${t.toServiceName},${t.amount},${statusLabel}`;
+      const statusInfo = getStatusDisplay(t);
+      return `${new Date(t.createdAt).toLocaleString()},${type},${t.fromServiceName},${t.toServiceName},${t.amount},${statusInfo.label}`;
     });
     const blob = new Blob(["\uFEFF" + headers + rows.join("\n")], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
@@ -154,35 +167,35 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
 
       <div className="space-y-3">
         {filteredTransactions.length > 0 ? (
-          filteredTransactions.map((t: any) => (
-            <div key={t.id} className="py-3 px-6 bg-white border-2 border-slate-50 rounded-[1.2rem] lg:rounded-[1.5rem] flex justify-between items-center shadow-sm hover:shadow-orange-500/10 transition-all group">
-              <div className="flex flex-col justify-center min-w-0 flex-1">
-                <div className="flex items-center space-x-3 mb-1">
-                  <span className={`text-[8px] font-black px-2 py-0.5 rounded-md uppercase tracking-tighter border ${
-                    t.status === 'PENDING' ? 'bg-orange-50 text-orange-500 border-orange-100' : 
-                    'bg-slate-100 text-slate-500 border-slate-200'
-                  }`}>
-                    {t.status || "完了"}
-                  </span>
-                  <p className="text-[9px] font-bold text-slate-400 italic">{new Date(t.createdAt).toLocaleString('ja-JP')}</p>
+          filteredTransactions.map((t: any) => {
+            const statusInfo = getStatusDisplay(t);
+            return (
+              <div key={t.id} className={`py-3 px-6 bg-white border-2 rounded-[1.2rem] lg:rounded-[1.5rem] flex justify-between items-center shadow-sm hover:shadow-orange-500/10 transition-all group ${t.isGift ? 'border-orange-50' : 'border-slate-50'}`}>
+                <div className="flex flex-col justify-center min-w-0 flex-1">
+                  <div className="flex items-center space-x-3 mb-1">
+                    <span className={`text-[8px] font-black px-2 py-0.5 rounded-md uppercase tracking-tighter border ${statusInfo.class}`}>
+                      {statusInfo.label}
+                    </span>
+                    <p className="text-[9px] font-bold text-slate-400 italic">{new Date(t.createdAt).toLocaleString('ja-JP')}</p>
+                  </div>
+                  <div className="flex items-center space-x-2 min-w-0">
+                    <span className={`font-black text-sm tracking-tight truncate ${t.isGift ? 'text-orange-600' : 'text-slate-700'}`}>
+                      {t.fromServiceName}
+                    </span>
+                    <span className="text-orange-500 text-base font-black flex-shrink-0">→</span>
+                    <span className="font-black text-slate-700 text-sm tracking-tight truncate">
+                      {t.toServiceName}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-2 min-w-0">
-                  <span className={`font-black text-sm tracking-tight truncate ${t.isGift ? 'text-orange-600' : 'text-slate-700'}`}>
-                    {t.fromServiceName}
-                  </span>
-                  <span className="text-orange-500 text-base font-black flex-shrink-0">→</span>
-                  <span className="font-black text-slate-700 text-sm tracking-tight truncate">
-                    {t.toServiceName}
-                  </span>
+                <div className="text-right ml-4 flex-shrink-0">
+                  <p className="font-black text-xl text-orange-500 tracking-tight">
+                    {t.amount.toLocaleString()}<span className="text-[10px] ml-1 italic text-slate-400 uppercase">pts</span>
+                  </p>
                 </div>
               </div>
-              <div className="text-right ml-4 flex-shrink-0">
-                <p className="font-black text-xl text-orange-500 tracking-tight">
-                  {t.amount.toLocaleString()}<span className="text-[10px] ml-1 italic text-slate-400 uppercase">pts</span>
-                </p>
-              </div>
-            </div>
-          ))
+            );
+          })
         ) : (
           <div className="py-16 text-center border-2 border-dashed border-slate-100 rounded-[2rem] bg-slate-50/50">
             <p className="text-slate-300 italic font-black text-base">NO DATA FOUND</p>

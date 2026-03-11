@@ -64,10 +64,14 @@ const schema = a.schema({
     giftId: a.id().required(),
     giftName: a.string().required(),
     pointSpent: a.integer().required(),
-    // 名前を変更して強制同期させる
     orderSourceId: a.string(), 
     orderSourceName: a.string(),
     status: a.enum(['PENDING', 'SHIPPED', 'COMPLETED', 'CANCELLED']),
+    // 配送先情報を追加
+    shippingName: a.string(),
+    shippingZip: a.string(),
+    shippingAddress: a.string(),
+    shippingTel: a.string(),
   }).authorization((allow) => [
     allow.owner(),
     allow.group("Admins")
