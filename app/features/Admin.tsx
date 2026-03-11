@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { AdminHistory } from "./AdminHistory";
+import { uploadData, getUrl } from "aws-amplify/storage";
 
 export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) => {
   const [activeAdminTab, setActiveAdminTab] = useState("services");
@@ -57,7 +58,42 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
     else window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // 配送処理を実行（PENDING -> SHIPPED）
+  // 画像アップロード処理（最新Gen2形式に微調整）
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessing(true);
+    try {
+      // public/ 配下を指定
+      const fileName = `public/gift-${Date.now()}-${file.name}`;
+      
+      const uploadOperation = uploadData({
+        path: fileName,
+        data: file,
+        options: {
+          contentType: file.type, // MIMEタイプを明示
+        }
+      });
+      
+      const result = await uploadOperation.result;
+      
+      // アップロードしたパスから公開URLを取得
+      const urlResult = await getUrl({ 
+        path: result.path,
+      });
+      
+      setGiftImageUrl(urlResult.url.toString());
+      alert("画像をアップロードしました");
+    } catch (err: any) {
+      console.error("アップロード詳細エラー:", err);
+      // エラーメッセージを表示して原因を特定しやすくする
+      alert(`アップロード失敗: ${err.message || "権限エラーまたはStorage未設定"}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const shipOrder = async (order: any) => {
     if (!confirm(`${order.giftName} の配送を完了としてマークしますか？\n配送先: ${order.shippingName} 様`)) return;
     
@@ -197,19 +233,23 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
                 <div><label className={styles.label}>ポイント</label><input type="number" value={giftPoints} onInput={(e: any) => setGiftPoints(e.target.value)} className={styles.input} /></div>
                 <div><label className={styles.label}>在庫</label><input type="number" value={giftStock} onInput={(e: any) => setGiftStock(e.target.value)} className={styles.input} /></div>
                 <div className="md:col-span-2">
-                  <label className={styles.label}>画像URL (https://...)</label>
-                  <div className="flex gap-4 items-end">
-                    <div className="flex-1">
-                      <input value={giftImageUrl} onChange={e=>setGiftImageUrl(e.target.value)} className={styles.input} placeholder="https://example.com/image.jpg" />
+                  <label className={styles.label}>ギフト画像</label>
+                  <div className="flex flex-col gap-4">
+                    <div className="flex gap-4 items-center bg-slate-50 p-4 rounded-2xl border-2 border-dashed border-slate-200">
+                      <div className="w-20 h-20 bg-white border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0 shadow-inner">
+                        {giftImageUrl ? <img src={giftImageUrl} className="w-full h-full object-cover" /> : <span className="text-2xl">🖼️</span>}
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <input type="file" accept="image/*" onChange={handleImageUpload} className="text-xs font-bold text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-black file:bg-slate-900 file:text-white hover:file:bg-orange-500 file:transition-all" />
+                        <p className="text-[9px] text-slate-400 font-bold italic uppercase tracking-widest">画像をアップロード、または下のURLを直接編集</p>
+                      </div>
                     </div>
-                    <div className="w-16 h-16 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0">
-                      {giftImageUrl ? <img src={giftImageUrl} className="w-full h-full object-cover" /> : <span className="text-xl">🖼️</span>}
-                    </div>
+                    <input value={giftImageUrl} onChange={e=>setGiftImageUrl(e.target.value)} className={styles.input} placeholder="https://..." />
                   </div>
                 </div>
               </div>
               <div className="flex gap-3">
-                <button onClick={handleGiftSubmit} className="flex-1 py-4 bg-orange-500 text-white font-black rounded-2xl shadow-lg hover:bg-slate-900 transition-all">
+                <button onClick={handleGiftSubmit} disabled={isProcessing} className="flex-1 py-4 bg-orange-500 text-white font-black rounded-2xl shadow-lg hover:bg-slate-900 transition-all disabled:opacity-50">
                   {isEditingGift ? "保存" : "登録"}
                 </button>
                 {isEditingGift ? (

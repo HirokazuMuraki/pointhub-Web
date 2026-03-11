@@ -36,7 +36,7 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
       });
       if (data) {
         setUserCredentials(data);
-        if (data.length > 0) setSelectedServiceId(data[0].serviceId);
+        if (data.length > 0 && !selectedServiceId) setSelectedServiceId(data[0].serviceId);
       }
     } catch (err) {
       console.error("認証情報取得失敗:", err);
@@ -76,33 +76,38 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
       return alert("配送先情報をすべて入力してください。");
     }
     
-    const { data: latestGift } = await client.models.GiftMaster.get({ id: selectedGift.id });
-    if (!latestGift || latestGift.stock < 1) {
-      alert("申し訳ありません、このギフトは現在在庫切れです。");
-      setSelectedGift(null);
-      fetchGifts();
-      return;
-    }
-    
-    const cred = userCredentials.find(c => c.serviceId === selectedServiceId);
-    if (!cred || (cred.dummyBalance || 0) < latestGift.pointCost) {
-      return alert("選択したサービスのポイント残高が不足しています。");
-    }
-
-    if (!confirm(`${latestGift.name} と交換しますか？\n確定すると即座にポイントが消費されます。`)) return;
-
     setIsProcessing(true);
     try {
+      // 1. 最新のギフト情報を取得（在庫の最終チェック）
+      const { data: latestGift } = await client.models.GiftMaster.get({ id: selectedGift.id });
+      if (!latestGift || latestGift.stock < 1) {
+        throw new Error("申し訳ありません、このギフトは現在在庫切れです。");
+      }
+      
+      // 2. ユーザーの残高チェック
+      const cred = userCredentials.find(c => c.serviceId === selectedServiceId);
+      if (!cred || (cred.dummyBalance || 0) < latestGift.pointCost) {
+        throw new Error("選択したサービスのポイント残高が不足しています。");
+      }
+
+      if (!confirm(`${latestGift.name} と交換しますか？\n確定すると即座にポイントが消費されます。`)) {
+        setIsProcessing(false);
+        return;
+      }
+
+      // 3. 在庫の減算
       await client.models.GiftMaster.update({
         id: latestGift.id,
         stock: latestGift.stock - 1
       });
 
+      // 4. ポイントの減算
       await client.models.UserServiceCredential.update({
         id: cred.id,
         dummyBalance: (cred.dummyBalance || 0) - latestGift.pointCost
       });
 
+      // 5. 注文履歴の作成
       const { errors } = await client.models.GiftOrder.create({
         userEmail: userEmail,
         giftId: latestGift.id,
@@ -110,7 +115,7 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
         pointSpent: latestGift.pointCost,
         orderSourceId: cred.serviceId,
         orderSourceName: cred.serviceName,
-        status: "PENDING", // 管理者が「配送」ボタンを押すまでは配送準備中
+        status: "PENDING",
         shippingName: shippingInfo.name,
         shippingZip: shippingInfo.zip,
         shippingAddress: shippingInfo.address,
@@ -123,7 +128,9 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
       setSelectedGift(null);
       await Promise.all([fetchGifts(), fetchCredentials()]);
     } catch (err: any) {
-      alert(`エラーが発生しました: ${err.message}`);
+      alert(err.message || "エラーが発生しました");
+      // 在庫切れなどの場合はリストを更新
+      fetchGifts();
     } finally {
       setIsProcessing(false);
     }
@@ -176,8 +183,8 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
             <div className="space-y-3">
               <div className="bg-orange-50 p-4 rounded-[1.5rem] border border-orange-100">
                 <div className="flex items-center space-x-4 mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-white border border-orange-100 flex items-center justify-center shrink-0">
-                    {selectedGift.imageUrl ? <img src={selectedGift.imageUrl} className="w-full h-full object-cover rounded-lg" /> : <span className="text-xl">🎁</span>}
+                  <div className="w-10 h-10 rounded-lg bg-white border border-orange-100 flex items-center justify-center shrink-0 overflow-hidden">
+                    {selectedGift.imageUrl ? <img src={selectedGift.imageUrl} className="w-full h-full object-cover" /> : <span className="text-xl">🎁</span>}
                   </div>
                   <div className="min-w-0">
                     <p className="text-[10px] font-black text-orange-400 uppercase leading-none mb-1">Exchange Gift</p>
