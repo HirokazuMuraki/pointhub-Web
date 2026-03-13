@@ -145,8 +145,15 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
           throw new Error("API連携の準備ができていません。");
         }
         
+        // giftCode または brandProductId のいずれか値がある方を使用する
+        const targetProductId = latestGift.giftCode || latestGift.brandProductId;
+
+        if (!targetProductId) {
+          throw new Error("ギフト識別ID（giftCode/brandProductId）が見つかりません。データベースを確認してください。");
+        }
+        
         const { data: gifteeResult, errors: apiErrors } = await client.queries.issueGifteeTicket({
-          brandProductId: latestGift.brandProductId,
+          brandProductId: targetProductId,
           category: latestGift.category || "card"
         });
 
@@ -214,7 +221,6 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
             {gifts.map((gift) => (
               <div key={gift.id} className="bg-white rounded-[2rem] border-2 border-slate-50 p-5 flex flex-col relative overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                {/* バッジ部分の修正: サイズを text-[10px] に拡大し、Gifteeの種類を判定 */}
                 <div className={`absolute top-4 right-4 z-20 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm ${gift._type === 'giftee' ? 'bg-slate-900 text-orange-400' : 'bg-orange-500 text-white'}`}>
                   {gift._type === 'giftee' 
                     ? (gift.type === 'giftee-box' ? '🎟️ GifteeBox' : '🎟️ GifteeCard') 
