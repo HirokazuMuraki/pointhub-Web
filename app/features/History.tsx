@@ -5,6 +5,7 @@ import { useState, useEffect, useMemo } from "react";
 export const HistoryList = ({ client, userEmail, styles }: any) => {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showUrlModal, setShowUrlModal] = useState<string | null>(null);
 
   const [inputFilter, setInputFilter] = useState({
     dateFrom: "",
@@ -21,7 +22,6 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
     const fetchHistory = async () => {
       if (!client?.models?.ExchangeTransaction) { setLoading(false); return; }
       try {
-        // ポイント交換とギフト交換を並列で取得
         const [txRes, orderRes] = await Promise.all([
           client.models.ExchangeTransaction.list({
             filter: { userEmail: { eq: userEmail } }
@@ -82,7 +82,6 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [transactions, appliedFilter]);
 
-  // ステータス表示用のヘルパー関数
   const getStatusDisplay = (t: any) => {
     if (!t.isGift) return { label: "完了", class: "bg-slate-100 text-slate-500 border-slate-200" };
     
@@ -91,17 +90,19 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
         return { label: "配送準備", class: "bg-orange-100 text-orange-600 border-orange-200" };
       case "SHIPPED":
         return { label: "配送済", class: "bg-green-100 text-green-600 border-green-200" };
+      case "COMPLETED":
+        return { label: "完了", class: "bg-slate-900 text-orange-400 border-slate-800" };
       default:
         return { label: "完了", class: "bg-slate-100 text-slate-500 border-slate-200" };
     }
   };
 
   const exportCSV = () => {
-    const headers = ["日付,種類,交換元,交換先,ポイント,ステータス\n"];
+    const headers = ["日付,種類,交換元,交換先,ポイント,ステータス,gifteeURL\n"];
     const rows = filteredTransactions.map(t => {
       const type = t.isGift ? "ギフト交換" : "ポイント交換";
       const statusInfo = getStatusDisplay(t);
-      return `${new Date(t.createdAt).toLocaleString()},${type},${t.fromServiceName},${t.toServiceName},${t.amount},${statusInfo.label}`;
+      return `${new Date(t.createdAt).toLocaleString()},${type},${t.fromServiceName},${t.toServiceName},${t.amount},${statusInfo.label},${t.gifteeUrl || ""}`;
     });
     const blob = new Blob(["\uFEFF" + headers + rows.join("\n")], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
@@ -115,7 +116,7 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
   if (loading) return <div className="p-10 text-center italic text-slate-400 font-black tracking-widest text-2xl">LOADING...</div>;
 
   return (
-    <div className="p-6 lg:p-8">
+    <div className="p-6 lg:p-8 relative">
       <div className="flex justify-between items-start mb-6">
         <div>
           <h3 className={`${styles.sectionTitle} mb-0.5`}>📋 交換履歴検索</h3>
@@ -126,7 +127,6 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
         </button>
       </div>
 
-      {/* 検索パネル */}
       <div className="bg-slate-100 p-5 rounded-[1.5rem] lg:rounded-[2rem] mb-6 border border-slate-200 shadow-inner">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
@@ -170,7 +170,7 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
           filteredTransactions.map((t: any) => {
             const statusInfo = getStatusDisplay(t);
             return (
-              <div key={t.id} className={`py-3 px-6 bg-white border-2 rounded-[1.2rem] lg:rounded-[1.5rem] flex justify-between items-center shadow-sm hover:shadow-orange-500/10 transition-all group ${t.isGift ? 'border-orange-50' : 'border-slate-50'}`}>
+              <div key={t.id} className={`py-3 px-6 bg-white border-2 rounded-[1.2rem] lg:rounded-[1.5rem] flex flex-col md:flex-row md:justify-between md:items-center shadow-sm hover:shadow-orange-500/10 transition-all group ${t.isGift ? 'border-orange-50' : 'border-slate-50'}`}>
                 <div className="flex flex-col justify-center min-w-0 flex-1">
                   <div className="flex items-center space-x-3 mb-1">
                     <span className={`text-[8px] font-black px-2 py-0.5 rounded-md uppercase tracking-tighter border ${statusInfo.class}`}>
@@ -188,10 +188,21 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
                     </span>
                   </div>
                 </div>
-                <div className="text-right ml-4 flex-shrink-0">
-                  <p className="font-black text-xl text-orange-500 tracking-tight">
-                    {t.amount.toLocaleString()}<span className="text-[10px] ml-1 italic text-slate-400 uppercase">pts</span>
-                  </p>
+                
+                <div className="flex items-center justify-between md:justify-end mt-3 md:mt-0 space-x-6">
+                  {t.gifteeUrl && (
+                    <button 
+                      onClick={() => setShowUrlModal(t.gifteeUrl)}
+                      className="px-4 py-2 bg-slate-900 hover:bg-orange-500 text-white text-[10px] font-black rounded-xl transition-all flex items-center space-x-2 shadow-sm"
+                    >
+                      <span>🎟️</span> <span>ギフトURLを表示</span>
+                    </button>
+                  )}
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-black text-xl text-orange-500 tracking-tight">
+                      {t.amount.toLocaleString()}<span className="text-[10px] ml-1 italic text-slate-400 uppercase">pts</span>
+                    </p>
+                  </div>
                 </div>
               </div>
             );
@@ -202,6 +213,36 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
           </div>
         )}
       </div>
+
+      {/* URL表示用モーダル */}
+      {showUrlModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-[2rem] p-8 shadow-2xl border-2 border-orange-500 animate-in fade-in zoom-in duration-200">
+            <div className="text-center mb-6">
+              <span className="text-4xl mb-4 block">🎁</span>
+              <h4 className="text-lg font-black text-slate-900 uppercase italic tracking-tight">Your Gift Link</h4>
+              <p className="text-[10px] font-bold text-slate-400 italic">下記のURLをコピーしてご利用ください</p>
+            </div>
+            <div className="bg-slate-50 p-4 rounded-2xl border-2 border-dashed border-slate-200 mb-6 break-all">
+              <p className="text-sm font-black text-orange-600 select-all">{showUrlModal}</p>
+            </div>
+            <div className="flex flex-col space-y-3">
+              <button 
+                onClick={() => { navigator.clipboard.writeText(showUrlModal); alert("URLをコピーしました"); }}
+                className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-black rounded-xl transition-all shadow-lg"
+              >
+                URLをコピーする
+              </button>
+              <button 
+                onClick={() => setShowUrlModal(null)}
+                className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-500 font-black rounded-xl transition-all"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

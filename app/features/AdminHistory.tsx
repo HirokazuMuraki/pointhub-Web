@@ -5,11 +5,12 @@ import React, { useState, useEffect, useMemo } from "react";
 export const AdminHistory = ({ client, styles }: any) => {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showUrlModal, setShowUrlModal] = useState<string | null>(null);
 
   const [inputFilter, setInputFilter] = useState({
     userEmail: "",
-    dateFrom: "", // datetime-local 用
-    dateTo: "",   // datetime-local 用
+    dateFrom: "",
+    dateTo: "",
     minAmount: "",
     maxAmount: "",
     fromService: "",
@@ -21,7 +22,6 @@ export const AdminHistory = ({ client, styles }: any) => {
   useEffect(() => {
     const fetchAllHistory = async () => {
       try {
-        // ポイント交換履歴とギフト注文履歴を並列で取得
         const [txRes, orderRes] = await Promise.all([
           client.models.ExchangeTransaction.list(),
           client.models.GiftOrder.list()
@@ -30,8 +30,6 @@ export const AdminHistory = ({ client, styles }: any) => {
         const txData = txRes.data || [];
         const orderData = (orderRes.data || []).map((o: any) => ({
           ...o,
-          // ギフト注文をトランザクション形式にマッピング
-          // orderSourceName (ショップ名) を表示に使用。無い場合は "🎁 GIFT"
           fromServiceName: o.orderSourceName || "🎁 GIFT",
           toServiceName: o.giftName,
           amount: o.pointSpent,
@@ -83,10 +81,10 @@ export const AdminHistory = ({ client, styles }: any) => {
   }, [transactions, appliedFilter]);
 
   const exportCSV = () => {
-    const headers = ["日付,種類,ユーザー,詳細(元→先),ポイント,ステータス\n"];
+    const headers = ["日付,種類,ユーザー,詳細(元→先),ポイント,ステータス,gifteeURL\n"];
     const rows = filteredTransactions.map(t => {
       const type = t.isGift ? "ギフト交換" : "ポイント交換";
-      return `${new Date(t.createdAt).toLocaleString()},${type},${t.userEmail},${t.fromServiceName} → ${t.toServiceName},${t.amount},${t.status || "COMPLETED"}`;
+      return `${new Date(t.createdAt).toLocaleString()},${type},${t.userEmail},${t.fromServiceName} → ${t.toServiceName},${t.amount},${t.status || "COMPLETED"},${t.gifteeUrl || ""}`;
     });
     const blob = new Blob(["\uFEFF" + headers + rows.join("\n")], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
@@ -100,7 +98,7 @@ export const AdminHistory = ({ client, styles }: any) => {
   if (loading) return <div className="p-10 text-center italic text-slate-400 font-black tracking-widest text-2xl">LOADING...</div>;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
       <div className="flex justify-between items-start mb-6">
         <div>
           <h3 className={`${styles.sectionTitle} mb-0.5`}>📋 全ユーザー交換履歴検索</h3>
@@ -144,12 +142,13 @@ export const AdminHistory = ({ client, styles }: any) => {
       </div>
 
       <div className="bg-white rounded-[2rem] border-2 border-slate-50 overflow-hidden shadow-sm overflow-x-auto">
-        <table className="w-full text-left border-collapse min-w-[700px]">
+        <table className="w-full text-left border-collapse min-w-[850px]">
           <thead>
             <tr className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase">
               <th className="p-6">User / Date</th>
               <th className="p-6">Route / Type</th>
               <th className="p-6 text-right">Amount</th>
+              <th className="p-6 text-center">giftee Info</th>
               <th className="p-6 text-center">Status</th>
             </tr>
           </thead>
@@ -174,8 +173,20 @@ export const AdminHistory = ({ client, styles }: any) => {
                   <span className="text-[9px] font-black text-slate-300 ml-1 italic">PTS</span>
                 </td>
                 <td className="p-6 text-center">
+                  {t.gifteeUrl ? (
+                    <button 
+                      onClick={() => setShowUrlModal(t.gifteeUrl)}
+                      className="inline-flex items-center space-x-1 text-[9px] font-black bg-slate-900 text-orange-400 px-2 py-1 rounded-lg hover:bg-orange-500 hover:text-white transition-colors"
+                    >
+                      <span>URLを表示</span>
+                    </button>
+                  ) : (
+                    <span className="text-[9px] font-bold text-slate-300">--</span>
+                  )}
+                </td>
+                <td className="p-6 text-center">
                   <span className={`px-3 py-1 rounded-full text-[9px] font-black border ${
-                    t.status === 'COMPLETED' ? 'bg-green-50 text-green-500 border-green-100' : 
+                    t.status === 'COMPLETED' ? 'bg-slate-900 text-orange-400 border-slate-800' : 
                     t.status === 'PENDING' ? 'bg-orange-50 text-orange-500 border-orange-100' :
                     'bg-slate-100 text-slate-400 border-slate-200'
                   }`}>
@@ -190,6 +201,28 @@ export const AdminHistory = ({ client, styles }: any) => {
           <div className="py-20 text-center text-slate-300 font-black italic tracking-widest uppercase">NO DATA FOUND</div>
         )}
       </div>
+
+      {/* URL表示用モーダル（管理者用） */}
+      {showUrlModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-[2rem] p-8 shadow-2xl border-2 border-slate-800 animate-in fade-in zoom-in duration-200">
+            <div className="text-center mb-6">
+              <span className="text-4xl mb-4 block">🔍</span>
+              <h4 className="text-lg font-black text-slate-900 uppercase italic tracking-tight">Gift Ticket URL</h4>
+              <p className="text-[10px] font-bold text-slate-400 italic">発行済みチケットのURLを確認しています</p>
+            </div>
+            <div className="bg-slate-50 p-4 rounded-2xl border-2 border-dashed border-slate-200 mb-6 break-all">
+              <p className="text-sm font-black text-slate-700 select-all">{showUrlModal}</p>
+            </div>
+            <button 
+              onClick={() => setShowUrlModal(null)}
+              className="w-full py-3 bg-slate-900 hover:bg-orange-500 text-white font-black rounded-xl transition-all shadow-lg"
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
