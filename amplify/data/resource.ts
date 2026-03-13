@@ -67,7 +67,6 @@ const schema = a.schema({
     giftCode: a.string().required(),
     imageUrl: a.string(),
     isActive: a.boolean().default(true),
-    // giftee API連携用に追加
     brandProductId: a.string(),
     category: a.string(), // "card" or "box"
   }).authorization((allow) => [
@@ -83,12 +82,10 @@ const schema = a.schema({
     orderSourceId: a.string(), 
     orderSourceName: a.string(),
     status: a.enum(['PENDING', 'SHIPPED', 'COMPLETED', 'CANCELLED']),
-    // 配送先情報を追加
     shippingName: a.string(),
     shippingZip: a.string(),
     shippingAddress: a.string(),
     shippingTel: a.string(),
-    // giftee発行URL保存用に追加
     gifteeUrl: a.string(),
     gifteeOrderId: a.string(),
   }).authorization((allow) => [
@@ -145,5 +142,8 @@ const schema = a.schema({
 export type Schema = ClientSchema<typeof schema>;
 export const data = defineData({
   schema,
-  authorizationModes: { defaultAuthorizationMode: "userPool" },
+  authorizationModes: { 
+    defaultAuthorizationMode: "userPool",
+    apiKeyAuthorizationMode: { expiresInDays: 30 } 
+  },
 });
