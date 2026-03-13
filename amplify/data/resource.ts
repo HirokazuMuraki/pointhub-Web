@@ -1,6 +1,7 @@
 import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
 import { getShopservePoints } from "../functions/get-shopserve-points/resource";
 import { operateShopservePoints } from "../functions/operate-shopserve-points/resource";
+import { issueGifteeTicket } from "../functions/issue-giftee-ticket/resource";
 
 const schema = a.schema({
   UserProfile: a.model({
@@ -59,6 +60,21 @@ const schema = a.schema({
     allow.group("Admins")
   ]),
 
+  GifteeMaster: a.model({
+    type: a.string().required(),
+    name: a.string().required(),
+    pointCost: a.integer().required(),
+    giftCode: a.string().required(),
+    imageUrl: a.string(),
+    isActive: a.boolean().default(true),
+    // giftee API連携用に追加
+    brandProductId: a.string(),
+    category: a.string(), // "card" or "box"
+  }).authorization((allow) => [
+    allow.authenticated().to(['read']),
+    allow.group("Admins")
+  ]),
+
   GiftOrder: a.model({
     userEmail: a.string().required(),
     giftId: a.id().required(),
@@ -72,6 +88,9 @@ const schema = a.schema({
     shippingZip: a.string(),
     shippingAddress: a.string(),
     shippingTel: a.string(),
+    // giftee発行URL保存用に追加
+    gifteeUrl: a.string(),
+    gifteeOrderId: a.string(),
   }).authorization((allow) => [
     allow.owner(),
     allow.group("Admins")
@@ -105,6 +124,21 @@ const schema = a.schema({
       message: a.string(),
     }))
     .handler(a.handler.function(operateShopservePoints))
+    .authorization(allow => [allow.authenticated()]),
+
+  issueGifteeTicket: a
+    .query()
+    .arguments({
+      brandProductId: a.string().required(),
+      category: a.string(),
+    })
+    .returns(a.customType({
+      success: a.boolean(),
+      url: a.string(),
+      orderId: a.string(),
+      message: a.string(),
+    }))
+    .handler(a.handler.function(issueGifteeTicket))
     .authorization(allow => [allow.authenticated()]),
 });
 
