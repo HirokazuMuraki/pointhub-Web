@@ -4,6 +4,7 @@ import { data } from './data/resource';
 import { storage } from './storage/resource';
 import { getShopservePoints } from './functions/get-shopserve-points/resource';
 import { operateShopservePoints } from './functions/operate-shopserve-points/resource';
+import { issueGifteeTicket } from './functions/issue-giftee-ticket/resource';
 
 defineBackend({
   auth,
@@ -11,4 +12,5 @@ defineBackend({
   storage,
   getShopservePoints,
   operateShopservePoints,
+  issueGifteeTicket,
 });
