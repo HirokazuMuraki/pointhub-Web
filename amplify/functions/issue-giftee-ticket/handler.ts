@@ -1,53 +1,52 @@
 import type { Schema } from "../../data/resource";
+import { HttpsProxyAgent } from "https-proxy-agent";
+import fetch from "node-fetch";
 
 export const handler: Schema["issueGifteeTicket"]["functionHandler"] = async (event) => {
-  const { brandProductId } = event.arguments;
+  const { brandProductId, category, point } = event.arguments;
   
-  // 記録用
   const AUTH_HEADER = "Basic MjFhZDQ1NGQtODliOS00Y2E0LTg5OGUtMTljM2QwYWRjYzA5";
-  const apiUrl = "https://g4b.giftee.biz/api/gift_cards";
+  const proxyUrl = "http://44.192.26.239:3128";
+  const agent = new HttpsProxyAgent(proxyUrl);
+  const issueIdentity = `order-${Date.now()}`;
 
-  console.log("Giftee Dummy Mode Start. BrandID:", brandProductId);
+  // 根本解決: フロントから届く category (DBのtype) が "giftee-box" なら Box モード
+  const isBoxMode = (category === "giftee-box" || category === "box");
+  
+  let apiUrl = "";
+  let requestBody: any = { issue_identity: issueIdentity };
+
+  if (isBoxMode) {
+    // --- Box用API ---
+    apiUrl = "https://g4b.giftee.biz/api/giftee_boxes";
+    requestBody["giftee_box_config_code"] = brandProductId;
+    requestBody["initial_point"] = Number(point);
+  } else {
+    // --- Card用API ---
+    apiUrl = "https://g4b.giftee.biz/api/gift_cards";
+    requestBody["gift_card_config_code"] = brandProductId;
+  }
 
   try {
-    // 疎通確認済みのため、通信部分はコメントアウト
-    /*
     const response = await fetch(apiUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": AUTH_HEADER
-      },
-      body: JSON.stringify({
-        gift_card_config_code: brandProductId,
-        issue_identity: `order-${Date.now()}`
-      })
+      headers: { "Content-Type": "application/json", "Authorization": AUTH_HEADER },
+      body: JSON.stringify(requestBody),
+      // @ts-ignore
+      agent: agent
     });
-    */
 
-    // テスト用のダミーURLを生成
-    const dummyUrl = `https://example.com/dummy-ticket?id=${brandProductId}&t=${Date.now()}`;
-    const dummyOrderId = `dummy-giftee-${Date.now()}`;
+    const data: any = await response.json();
+    if (!response.ok) throw new Error(`API Error: ${JSON.stringify(data)}`);
 
-    console.log("Returning Dummy Response:", dummyUrl);
-
-    // 明示的に構造を返却
-    const result = {
+    return {
       success: true,
-      url: dummyUrl,
-      orderId: dummyOrderId,
-      message: "Success (Dummy Mode Enabled)"
+      url: data.giftee_box?.url || data.gift_card?.url || "",
+      orderId: issueIdentity,
+      message: "Success"
     };
-
-    return result;
-
   } catch (error: any) {
     console.error("Lambda Error:", error);
-    return {
-      success: false,
-      message: error instanceof Error ? error.message : "Internal Lambda Error",
-      url: "",
-      orderId: ""
-    };
+    return { success: false, message: error.message, url: "", orderId: "" };
   }
 };

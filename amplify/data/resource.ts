@@ -128,6 +128,7 @@ const schema = a.schema({
     .arguments({
       brandProductId: a.string().required(),
       category: a.string(),
+      point: a.integer(),
     })
     .returns(a.customType({
       success: a.boolean(),

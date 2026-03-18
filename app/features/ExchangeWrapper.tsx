@@ -10,12 +10,10 @@ const GiftImage = ({ path }: { path: string }) => {
 
   useEffect(() => {
     if (!path) return;
-    // 既存のフルURL（http...）の場合はそのまま使用
     if (path.startsWith('http')) {
       setUrl(path);
       return;
     }
-    // S3パス（public/...）の場合は署名付きURLを取得
     getUrl({ path }).then(res => setUrl(res.url.toString()));
   }, [path]);
 
@@ -145,16 +143,17 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
           throw new Error("API連携の準備ができていません。");
         }
         
-        // giftCode または brandProductId のいずれか値がある方を使用する
         const targetProductId = latestGift.giftCode || latestGift.brandProductId;
 
         if (!targetProductId) {
           throw new Error("ギフト識別ID（giftCode/brandProductId）が見つかりません。データベースを確認してください。");
         }
         
+        // 修正点: DB上の 'type'（giftee-box等）を最優先で category として渡す
         const { data: gifteeResult, errors: apiErrors } = await client.queries.issueGifteeTicket({
           brandProductId: targetProductId,
-          category: latestGift.category || "card"
+          category: latestGift.type || latestGift.category || "card",
+          point: latestGift.pointCost
         });
 
         if (apiErrors || !gifteeResult?.success) {
