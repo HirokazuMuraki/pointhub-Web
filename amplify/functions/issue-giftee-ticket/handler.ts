@@ -3,46 +3,57 @@ import type { Schema } from "../../data/resource";
 export const handler: Schema["issueGifteeTicket"]["functionHandler"] = async (event) => {
   const { brandProductId, category, point } = event.arguments;
   
-  // 更新された Cloudflare Worker のエンドポイント
+  // 認証情報の型ガード: Cognito認証の場合のみ sub (ユーザーID) を取得
+  let userId = "anonymous";
+  if (event.identity && "sub" in event.identity) {
+    userId = (event.identity as any).sub;
+  }
+  
   const WORKER_BASE_URL = "https://super-hat-1460.pointhub4giftee.workers.dev";
   
-  const issueIdentity = `order-${Date.now()}`;
+  // ① 重複発行防止：ユーザーIDとタイムスタンプを組み合わせる
+  const issueIdentity = `order-${userId}-${Date.now()}`;
+  
   const isBoxMode = (category === "giftee-box" || category === "box");
   
   let apiPath = "";
   let requestBody: any = { issue_identity: issueIdentity };
 
   if (isBoxMode) {
-    // --- Box用パス ---
     apiPath = "/api/giftee_boxes";
     requestBody["giftee_box_config_code"] = brandProductId;
     requestBody["initial_point"] = Number(point);
   } else {
-    // --- Card用パス ---
     apiPath = "/api/gift_cards";
     requestBody["gift_card_config_code"] = brandProductId;
   }
 
   try {
-    // Cloudflare Worker 経由で Giftee API を叩く
     const response = await fetch(`${WORKER_BASE_URL}${apiPath}`, {
       method: "POST",
-      headers: { 
-        "Content-Type": "application/json"
-        // Authorization は Worker 側で付与・上書きされる設定のためここでは省略可能
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody)
     });
 
     const text = await response.text();
+    
+    // ② エラー時の詳細ログ出力
+    if (!response.ok) {
+      console.error("Giftee API Error Detail:", {
+        status: response.status,
+        statusText: response.statusText,
+        responseBody: text,
+        issueIdentity
+      });
+      throw new Error(`Giftee API Error: ${response.status} ${text}`);
+    }
+
     let data;
     try {
       data = JSON.parse(text);
     } catch (e) {
       throw new Error(`API Response is not JSON: ${text}`);
     }
-
-    if (!response.ok) throw new Error(`API Error: ${JSON.stringify(data)}`);
 
     return {
       success: true,
@@ -52,6 +63,11 @@ export const handler: Schema["issueGifteeTicket"]["functionHandler"] = async (ev
     };
   } catch (error: any) {
     console.error("Lambda Error:", error);
-    return { success: false, message: error.message, url: "", orderId: "" };
+    return { 
+      success: false, 
+      message: error.message, 
+      url: "", 
+      orderId: issueIdentity 
+    };
   }
 };
