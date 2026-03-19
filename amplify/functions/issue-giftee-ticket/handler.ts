@@ -10,6 +10,7 @@ export const handler: Schema["issueGifteeTicket"]["functionHandler"] = async (ev
   }
   
   const WORKER_BASE_URL = "https://super-hat-1460.pointhub4giftee.workers.dev";
+  const WORKER_TOKEN = "Exchange_Giftee_via_PointHub_2026";
   
   // ① 重複発行防止：ユーザーIDとタイムスタンプを組み合わせる
   const issueIdentity = `order-${userId}-${Date.now()}`;
@@ -31,7 +32,10 @@ export const handler: Schema["issueGifteeTicket"]["functionHandler"] = async (ev
   try {
     const response = await fetch(`${WORKER_BASE_URL}${apiPath}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "X-Pointhub-Token": WORKER_TOKEN
+      },
       body: JSON.stringify(requestBody)
     });
 
