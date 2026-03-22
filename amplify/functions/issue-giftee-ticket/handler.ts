@@ -1,77 +1,84 @@
 import type { Schema } from "../../data/resource";
+import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
+
+const ses = new SESClient({ region: "ap-northeast-1" });
 
 export const handler: Schema["issueGifteeTicket"]["functionHandler"] = async (event) => {
-  const { brandProductId, category, point } = event.arguments;
+  const { 
+    brandProductId, 
+    category, 
+    point, 
+    userName, 
+    userEmail,
+    giftName,
+    fromServiceName,
+    balanceAfter
+  } = event.arguments;
   
-  // 認証情報の型ガード: Cognito認証の場合のみ sub (ユーザーID) を取得
-  let userId = "anonymous";
-  if (event.identity && "sub" in event.identity) {
-    userId = (event.identity as any).sub;
+  const SENDER_EMAIL = "ph-web@waq-up.com";
+  const displayName = userName ? `${userName} 様` : "お客様";
+  const recipientEmail = userEmail;
+
+  if (!recipientEmail) {
+    return { success: false, message: "User email not identified.", url: "", orderId: "" };
   }
-  
+
+  const userId = (event.identity as any)?.sub || "anonymous";
   const WORKER_BASE_URL = "https://super-hat-1460.pointhub4giftee.workers.dev";
   const WORKER_TOKEN = "Exchange_Giftee_via_PointHub_2026";
-  
-  // ① 重複発行防止：ユーザーIDとタイムスタンプを組み合わせる
   const issueIdentity = `order-${userId}-${Date.now()}`;
   
   const isBoxMode = (category === "giftee-box" || category === "box");
-  
-  let apiPath = "";
-  let requestBody: any = { issue_identity: issueIdentity };
-
-  if (isBoxMode) {
-    apiPath = "/api/giftee_boxes";
-    requestBody["giftee_box_config_code"] = brandProductId;
-    requestBody["initial_point"] = Number(point);
-  } else {
-    apiPath = "/api/gift_cards";
-    requestBody["gift_card_config_code"] = brandProductId;
-  }
+  const apiPath = isBoxMode ? "/api/giftee_boxes" : "/api/gift_cards";
 
   try {
     const response = await fetch(`${WORKER_BASE_URL}${apiPath}`, {
       method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        "X-Pointhub-Token": WORKER_TOKEN
-      },
-      body: JSON.stringify(requestBody)
+      headers: { "Content-Type": "application/json", "X-Pointhub-Token": WORKER_TOKEN },
+      body: JSON.stringify({
+        issue_identity: issueIdentity,
+        [isBoxMode ? "giftee_box_config_code" : "gift_card_config_code"]: brandProductId,
+        ...(isBoxMode && { initial_point: Number(point) })
+      })
     });
 
-    const text = await response.text();
-    
-    // ② エラー時の詳細ログ出力
-    if (!response.ok) {
-      console.error("Giftee API Error Detail:", {
-        status: response.status,
-        statusText: response.statusText,
-        responseBody: text,
-        issueIdentity
-      });
-      throw new Error(`Giftee API Error: ${response.status} ${text}`);
-    }
+    if (!response.ok) throw new Error(`Giftee API Error: ${response.status}`);
+    const data: any = await response.json();
+    const gifteeUrl = data.giftee_box?.url || data.gift_card?.url || "";
 
-    let data;
     try {
-      data = JSON.parse(text);
-    } catch (e) {
-      throw new Error(`API Response is not JSON: ${text}`);
+      const subject = "【PointHub】ギフトURL発行のお知らせ";
+      const bodyText = `${displayName}
+
+ギフトの交換が完了しました！以下のURLよりお受け取りください。
+
+■ ギフト内容: ${giftName || brandProductId}
+
+■ ギフト受取URL:
+${gifteeUrl}
+
+■ ポイント利用詳細:
+・交換元ポイント：${fromServiceName || "不明"}
+・　消費ポイント：${point?.toLocaleString()} ポイント
+・　交換後の残高：${balanceAfter?.toLocaleString()} ポイント
+
+ご利用ありがとうございました。`;
+
+      await ses.send(new SendEmailCommand({
+        Destination: { ToAddresses: [recipientEmail] },
+        Message: {
+          Body: { Text: { Data: bodyText } },
+          Subject: { Data: subject },
+        },
+        Source: SENDER_EMAIL,
+      }));
+    } catch (mailError) {
+      console.error("SES Mail Send Error:", mailError);
     }
 
-    return {
-      success: true,
-      url: data.giftee_box?.url || data.gift_card?.url || "",
-      orderId: issueIdentity,
-      message: "Success"
-    };
+    return { success: true, url: gifteeUrl, orderId: issueIdentity, message: "Success" };
   } catch (error: any) {
     console.error("Lambda Error:", error);
-    return { 
-      success: false, 
-      message: error.message, 
-      url: "", 
-      orderId: issueIdentity 
-    };
+    return { success: false, message: error.message, url: "", orderId: issueIdentity };
   }
 };

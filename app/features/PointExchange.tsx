@@ -18,21 +18,17 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
 
   const syncToDB = useCallback(async (cred: any) => {
     if (!cred || cred.serviceName.includes("ダミー")) return;
-
     try {
       const info = getSvcInfo(cred.serviceId);
       if (!info?.shopId) return;
-
       const { data } = await client.queries.getShopservePoints({
         accountId: cred.loginId,
         shopId: info.shopId,
         authKey: info.masterAuthKey || cred.password,
       });
-
       if (data) {
         const res = typeof data === 'string' ? JSON.parse(data) : data;
         const latestBalance = res.point ?? res.points ?? 0;
-        
         await client.models.UserServiceCredential.update({
           id: cred.id,
           dummyBalance: latestBalance
@@ -63,7 +59,6 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
     const toCred = credentials.find(c => c.id === toCredId);
     const val = parseInt(amount);
 
-    // バリデーションの強化：1以上の数値であることを必須に
     if (!val || val < 1 || !fromCred || !toCred) {
       return alert("交換ポイント数は1ポイント以上で入力してください");
     }
@@ -76,7 +71,14 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
     setIsProcessing(true);
 
     try {
-      const targets = [{ cred: fromCred, op: -val }, { cred: toCred, op: val }];
+      // 交換後の残高をあらかじめ計算
+      const fromBalanceAfter = (fromCred.dummyBalance || 0) - val;
+      const toBalanceAfter = (toCred.dummyBalance || 0) + val;
+
+      const targets = [
+        { cred: fromCred, op: -val, newBal: fromBalanceAfter }, 
+        { cred: toCred, op: val, newBal: toBalanceAfter }
+      ];
 
       for (const t of targets) {
         if (!t.cred.serviceName.includes("ダミー")) {
@@ -89,17 +91,20 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
             note: "PointHub"
           });
         }
+        // DBの残高を更新
         await client.models.UserServiceCredential.update({
           id: t.cred.id,
-          dummyBalance: (t.cred.dummyBalance || 0) + t.op
+          dummyBalance: t.newBal
         });
       }
 
+      // 履歴を作成（交換元の確定後残高を記録）
       await client.models.ExchangeTransaction.create({
         userEmail, 
         fromServiceName: fromCred.serviceName, 
         toServiceName: toCred.serviceName, 
         amount: val, 
+        dummyBalance: fromBalanceAfter, // ← ここに計算後の残高をセット！
         status: "COMPLETED"
       });
 

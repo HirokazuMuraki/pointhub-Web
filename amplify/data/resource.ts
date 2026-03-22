@@ -68,7 +68,7 @@ const schema = a.schema({
     imageUrl: a.string(),
     isActive: a.boolean().default(true),
     brandProductId: a.string(),
-    category: a.string(), // "card" or "box"
+    category: a.string(),
   }).authorization((allow) => [
     allow.authenticated().to(['read']),
     allow.group("Admins")
@@ -79,6 +79,7 @@ const schema = a.schema({
     giftId: a.id().required(),
     giftName: a.string().required(),
     pointSpent: a.integer().required(),
+    dummyBalance: a.integer().default(300),
     orderSourceId: a.string(), 
     orderSourceName: a.string(),
     status: a.enum(['PENDING', 'SHIPPED', 'COMPLETED', 'CANCELLED']),
@@ -129,6 +130,12 @@ const schema = a.schema({
       brandProductId: a.string().required(),
       category: a.string(),
       point: a.integer(),
+      userName: a.string(),
+      userEmail: a.string().required(),
+      // --- 追加引数 ---
+      giftName: a.string(),
+      fromServiceName: a.string(),
+      balanceAfter: a.integer(),
     })
     .returns(a.customType({
       success: a.boolean(),
