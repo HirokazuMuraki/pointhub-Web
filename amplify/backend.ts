@@ -6,6 +6,8 @@ import { storage } from './storage/resource';
 import { getShopservePoints } from './functions/get-shopserve-points/resource';
 import { operateShopservePoints } from './functions/operate-shopserve-points/resource';
 import { issueGifteeTicket } from './functions/issue-giftee-ticket/resource';
+import { sendOrderNotification } from './functions/send-order-notification/resource';
+import { sendShipmentNotification } from './functions/send-shipment-notification/resource';
 
 const backend = defineBackend({
   auth,
@@ -14,19 +16,25 @@ const backend = defineBackend({
   getShopservePoints,
   operateShopservePoints,
   issueGifteeTicket,
+  sendOrderNotification,
+  sendShipmentNotification,
 });
 
 const issueGifteeTicketLambda = backend.issueGifteeTicket.resources.lambda;
+const sendOrderNotificationLambda = backend.sendOrderNotification.resources.lambda;
+const sendShipmentNotificationLambda = backend.sendShipmentNotification.resources.lambda;
 
-// SES権限
-issueGifteeTicketLambda.addToRolePolicy(
-  new PolicyStatement({
-    actions: ["ses:SendEmail", "ses:SendRawEmail"],
-    resources: ["*"],
-  })
-);
+// SES権限 (共通)
+const sesPolicy = new PolicyStatement({
+  actions: ["ses:SendEmail", "ses:SendRawEmail"],
+  resources: ["*"],
+});
 
-// DynamoDB権限（全てのテーブルへの読み取りを一旦許可して疎通確認）
+issueGifteeTicketLambda.addToRolePolicy(sesPolicy);
+sendOrderNotificationLambda.addToRolePolicy(sesPolicy);
+sendShipmentNotificationLambda.addToRolePolicy(sesPolicy);
+
+// DynamoDB権限（既存のGiftee用）
 issueGifteeTicketLambda.addToRolePolicy(
   new PolicyStatement({
     actions: ["dynamodb:GetItem", "dynamodb:Query"],

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { PointExchange } from "./PointExchange";
 import { getUrl } from "aws-amplify/storage";
 
@@ -23,6 +23,14 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [shippingInfo, setShippingInfo] = useState({ name: "", zip: "", address: "", tel: "" });
+
+  // PointExchange.tsx と同一のサービス情報取得ロジック
+  const getSvcInfo = useCallback((serviceId: string) => {
+    const svcMaster = services.find((s: any) => s.id === serviceId);
+    if (!svcMaster) return null;
+    const settings = JSON.parse(svcMaster.connectionSettings || "{}");
+    return { shopId: settings?.shopId, masterAuthKey: settings?.authKey };
+  }, [services]);
 
   const fetchGifts = async () => {
     try {
@@ -75,93 +83,95 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
   };
 
   const handleGiftExchange = async () => {
-    if (!selectedGift || !selectedServiceId) return;
-    if (selectedGift._type === 'master' && (!shippingInfo.name || !shippingInfo.zip || !shippingInfo.address)) {
-      return alert("配送先情報をすべて入力してください。");
-    }
+    if (!selectedGift || !selectedServiceId || isProcessing) return;
     
-    // 最新の残高を再確認するために credential を特定
     const cred = userCredentials.find((c:any) => c.serviceId === selectedServiceId);
     if (!cred) return;
 
+    if (!confirm(`${selectedGift.name} と交換しますか？`)) return;
+
     setIsProcessing(true);
+
     try {
       const modelName = selectedGift._type === 'master' ? 'GiftMaster' : 'GifteeMaster';
       const { data: latestGift } = await (client.models as any)[modelName].get({ id: selectedGift.id });
-      
-      if (!latestGift || (selectedGift._type === 'master' && latestGift.stock < 1)) throw new Error("在庫切れです。");
-      if ((cred.dummyBalance || 0) < latestGift.pointCost) throw new Error("残高不足です。");
+      if (!latestGift || (selectedGift._type === 'master' && latestGift.stock < 1)) throw new Error("在庫がありません。");
 
-      if (!confirm(`${latestGift.name} と交換しますか？`)) {
-        setIsProcessing(false);
-        return;
+      // --- ShopServe ポイント減算処理 (PointExchange のロジックを移植) ---
+      const balanceAfter = (cred.dummyBalance || 0) - latestGift.pointCost;
+
+      if (!cred.serviceName.includes("ダミー")) {
+        const info = getSvcInfo(cred.serviceId);
+        const { data: opResult } = await client.mutations.operateShopservePoints({
+          accountId: cred.loginId, // accountId ではなく loginId を使用
+          shopId: info?.shopId,
+          authKey: info?.masterAuthKey || cred.password,
+          amount: -latestGift.pointCost,
+          note: "PointHub-Gift"
+        });
+
+        if (!opResult?.success) {
+          throw new Error(opResult?.message || "ShopServeのポイント減算に失敗しました。");
+        }
       }
 
-      const balanceAfter = (cred.dummyBalance || 0) - latestGift.pointCost;
-      let gifteeUrl = "";
-      let gifteeOrderId = "";
-
-      // 1. 先に残高を更新（ここが最優先）
-      const { errors: updateErrors } = await client.models.UserServiceCredential.update({
+      // DBの残高を更新
+      await client.models.UserServiceCredential.update({
         id: cred.id,
         dummyBalance: balanceAfter
       });
-      if (updateErrors) throw new Error("残高更新に失敗しました。");
 
-      // 2. 外部API連携 (gifteeの場合)
+      // --- 各種ギフト処理 (Giftee発行 / 通知) ---
+      let gifteeUrl = "";
+      let gifteeOrderId = "";
       if (selectedGift._type === 'giftee') {
         const targetProductId = latestGift.giftCode || latestGift.brandProductId;
-        const { data: gifteeResult, errors: apiErrors } = await client.queries.issueGifteeTicket({
+        const { data: gifteeResult } = await client.queries.issueGifteeTicket({
           brandProductId: targetProductId,
-          category: latestGift.type || latestGift.category || "card",
+          category: latestGift.type || "card",
           point: latestGift.pointCost,
-          userName: shippingInfo.name,
+          userName: shippingInfo.name || userEmail,
           userEmail: userEmail,
           giftName: latestGift.name,
           fromServiceName: cred.serviceName,
           balanceAfter: balanceAfter
         });
-
-        if (apiErrors || !gifteeResult?.success) {
-          // ロールバック処理を入れるのが理想ですが、まずは成功系を確実にします
-          throw new Error(`APIエラー: ${gifteeResult?.message || "不明"}`);
+        if (gifteeResult?.success) {
+          gifteeUrl = gifteeResult.url || "";
+          gifteeOrderId = gifteeResult.orderId || "";
         }
-        gifteeUrl = gifteeResult.url || "";
-        gifteeOrderId = gifteeResult.orderId || "";
-      }
-
-      // 3. 在庫減算 (マスターギフトのみ)
-      if (selectedGift._type === 'master') {
+      } else {
         await client.models.GiftMaster.update({ id: latestGift.id, stock: latestGift.stock - 1 });
+        await client.mutations.sendOrderNotification({
+          userEmail, giftName: latestGift.name, pointSpent: latestGift.pointCost,
+          shippingName: shippingInfo.name, shippingZip: shippingInfo.zip,
+          shippingAddress: shippingInfo.address, shippingTel: shippingInfo.tel,
+        });
       }
 
-      // 4. 最後に履歴を作成
-      const { errors: orderErrors } = await client.models.GiftOrder.create({
-        userEmail: userEmail,
-        giftId: latestGift.id,
-        giftName: latestGift.name,
-        pointSpent: latestGift.pointCost,
-        dummyBalance: balanceAfter,
-        orderSourceId: cred.serviceId,
-        orderSourceName: cred.serviceName,
+      // 注文履歴の作成
+      await client.models.GiftOrder.create({
+        userEmail, giftId: latestGift.id, giftName: latestGift.name,
+        pointSpent: latestGift.pointCost, dummyBalance: balanceAfter,
+        orderSourceId: cred.serviceId, orderSourceName: cred.serviceName,
         status: selectedGift._type === 'giftee' ? "COMPLETED" : "PENDING",
         shippingName: shippingInfo.name || "giftee交換",
         shippingZip: shippingInfo.zip || "000-0000",
         shippingAddress: shippingInfo.address || "デジタル送付",
         shippingTel: shippingInfo.tel || "000-0000-0000",
-        gifteeUrl: gifteeUrl,
-        gifteeOrderId: gifteeOrderId,
+        gifteeUrl, gifteeOrderId
       });
-      if (orderErrors) console.error("履歴作成エラー:", orderErrors);
 
       alert("交換が完了しました！");
       setSelectedGift(null);
       await Promise.all([fetchGifts(), fetchCredentials()]);
+
     } catch (err: any) {
       alert(`交換エラー: ${err.message}`);
-      fetchGifts();
       fetchCredentials();
-    } finally { setIsProcessing(false); }
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -232,7 +242,7 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Payment Source</label>
                 <select className="w-full p-4 bg-white rounded-2xl border-2 border-slate-100 text-sm font-bold focus:border-orange-500 outline-none transition-all appearance-none cursor-pointer" value={selectedServiceId} onChange={(e) => setSelectedServiceId(e.target.value)}>
                   {userCredentials.map((c: any) => (
-                    <option key={c.id} value={c.serviceId}>{c.serviceName} (残高: {c.dummyBalance} pts)</option>
+                    <option key={c.id} value={c.id}>{c.serviceName} (残高: {c.dummyBalance} pts)</option>
                   ))}
                 </select>
               </div>

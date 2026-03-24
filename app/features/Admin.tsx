@@ -122,8 +122,23 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
     if (!confirm(`${order.giftName} の配送を完了としてマークしますか？\n配送先: ${order.shippingName} 様`)) return;
     setIsProcessing(true);
     try {
+      // 1. ステータス更新
       await client.models.GiftOrder.update({ id: order.id, status: "SHIPPED" });
-      alert(`配送完了として記録しました。`);
+      
+      // 2. 発送完了メール送信
+      try {
+        await client.mutations.sendShipmentNotification({
+          userEmail: order.userEmail,
+          giftName: order.giftName,
+          shippingName: order.shippingName || "お客様"
+        });
+      } catch (mailErr) {
+        console.error("メール送信失敗（管理用）:", mailErr);
+        // メール送信に失敗しても、ステータス更新は完了しているので警告のみ
+        alert("配送ステータスは更新されましたが、通知メールの送信に失敗しました。");
+      }
+
+      alert(`配送完了として記録し、メールを送信しました。`);
       fetchOrders();
     } catch (err: any) {
       alert("エラー: " + err.message);
@@ -273,7 +288,7 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
         {activeAdminTab === "services" && (
           <div className="space-y-12">
-            {/* サービス登録・編集セクション（省略なし） */}
+            {/* サービス登録・編集セクション */}
             <section className="bg-slate-50 p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-inner space-y-6">
               <h3 className={styles.sectionTitle}>{viewingId ? "🔍 サービス詳細・編集" : "🪙 ポイント交換マスター登録"}</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -420,7 +435,6 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
           </div>
         )}
 
-        {/* 注文管理以降はそのまま */}
         {activeAdminTab === "orders" && (
           <section className="space-y-6">
             <div className="flex justify-between items-center">

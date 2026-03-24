@@ -2,6 +2,8 @@ import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
 import { getShopservePoints } from "../functions/get-shopserve-points/resource";
 import { operateShopservePoints } from "../functions/operate-shopserve-points/resource";
 import { issueGifteeTicket } from "../functions/issue-giftee-ticket/resource";
+import { sendOrderNotification } from "../functions/send-order-notification/resource";
+import { sendShipmentNotification } from "../functions/send-shipment-notification/resource";
 
 const schema = a.schema({
   UserProfile: a.model({
@@ -132,7 +134,6 @@ const schema = a.schema({
       point: a.integer(),
       userName: a.string(),
       userEmail: a.string().required(),
-      // --- 追加引数 ---
       giftName: a.string(),
       fromServiceName: a.string(),
       balanceAfter: a.integer(),
@@ -144,6 +145,38 @@ const schema = a.schema({
       message: a.string(),
     }))
     .handler(a.handler.function(issueGifteeTicket))
+    .authorization(allow => [allow.authenticated()]),
+
+  sendOrderNotification: a
+    .mutation()
+    .arguments({
+      userEmail: a.string().required(),
+      giftName: a.string().required(),
+      pointSpent: a.integer().required(),
+      shippingName: a.string().required(),
+      shippingZip: a.string().required(),
+      shippingAddress: a.string().required(),
+      shippingTel: a.string().required(),
+    })
+    .returns(a.customType({
+      success: a.boolean(),
+      message: a.string(),
+    }))
+    .handler(a.handler.function(sendOrderNotification))
+    .authorization(allow => [allow.authenticated()]),
+
+  sendShipmentNotification: a
+    .mutation()
+    .arguments({
+      userEmail: a.string().required(),
+      giftName: a.string().required(),
+      shippingName: a.string().required(),
+    })
+    .returns(a.customType({
+      success: a.boolean(),
+      message: a.string(),
+    }))
+    .handler(a.handler.function(sendShipmentNotification))
     .authorization(allow => [allow.authenticated()]),
 });
 
