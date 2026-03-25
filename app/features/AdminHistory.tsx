@@ -2,95 +2,169 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 
-export const AdminHistory = ({ client }: any) => {
-  const [history, setHistory] = useState<any[]>([]);
-  const [searchId, setSearchId] = useState("");
-  const [startDateTime, setStartDateTime] = useState("");
-  const [endDateTime, setEndDateTime] = useState("");
-  const [fromSvc, setFromSvc] = useState("");
-  const [toSvc, setToSvc] = useState("");
-  const [minPts, setMinPts] = useState("");
-  const [maxPts, setMaxPts] = useState("");
-
-  const inputClass = "w-full p-3 bg-slate-50 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-orange-500 outline-none transition-all";
-
-  const fetchAll = async () => {
-    try {
-      const [exRes, giftRes] = await Promise.all([
-        client.models.ExchangeTransaction.list(),
-        client.models.GiftOrder.list()
-      ]);
-      const exData = (exRes.data || []).map((d: any) => ({ ...d, category: "ポイント交換", icon: "🪙", displayTitle: `${d.fromServiceName} → ${d.toServiceName}`, fromName: d.fromServiceName || "", toName: d.toServiceName || "", points: d.amount || 0, user: d.userEmail }));
-      const giftData = (giftRes.data || []).map((d: any) => ({ ...d, category: "ギフト交換", icon: "🎁", displayTitle: d.giftName, fromName: d.orderSourceName || "", toName: "ギフト受取", points: d.pointSpent || 0, user: d.userEmail }));
-      setHistory([...exData, ...giftData].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-    } catch (e) { console.error(e); }
+export const AdminHistory = ({ client, styles }: any) => {
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  const initialInput = {
+    dtFrom: "", dtTo: "", uName: "", uEmail: "", src: "", dst: "", minP: "", maxP: "", trackingNumber: ""
   };
+  const [input, setInput] = useState(initialInput);
+  const [query, setQuery] = useState<any>(null);
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => {
+    const fetchAllHistory = async () => {
+      try {
+        const [txRes, orderRes, profileRes, credRes] = await Promise.all([
+          client.models.ExchangeTransaction.list(),
+          client.models.GiftOrder.list(),
+          client.models.UserProfile.list(),
+          client.models.UserServiceCredential.list()
+        ]);
+        const nameMap = new Map((profileRes.data || []).map((p: any) => [p.email, p.name]));
+        const creds = credRes.data || [];
+        const getLatestBal = (email: string, svcName: string) => {
+          const c = creds.find((i: any) => i.userEmail === email && i.serviceName === svcName);
+          return c ? c.dummyBalance : null;
+        };
+        const txData = (txRes.data || []).map((t: any) => {
+          const latestToBal = getLatestBal(t.userEmail, t.toServiceName);
+          return {
+            ...t, 
+            uName: nameMap.get(t.userEmail) || "不明",
+            rawSrc: t.fromServiceName || "", 
+            rawDst: t.toServiceName || "",
+            srcBalance: t.dummyBalance || 0,
+            dstBalance: latestToBal !== null ? latestToBal : "-",
+            displayFrom: `${t.fromServiceName} (残高:${(t.dummyBalance || 0).toLocaleString()}pts)`,
+            displayTo: `${t.toServiceName}${latestToBal !== null ? ` (残高:${latestToBal.toLocaleString()}pts)` : ""}`,
+            trackingNumber: t.trackingNumber || ""
+          };
+        });
+        const orderData = (orderRes.data || []).map((o: any) => {
+          return {
+            ...o, 
+            uName: nameMap.get(o.userEmail) || o.shippingName || "不明",
+            rawSrc: o.orderSourceName || "", 
+            rawDst: o.giftName || "",
+            srcBalance: o.dummyBalance || 0,
+            dstBalance: "", 
+            displayFrom: `${o.orderSourceName || "ギフト元"} (残高:${(o.dummyBalance || 0).toLocaleString()}pts)`,
+            displayTo: o.giftName, 
+            amount: o.pointSpent,
+            trackingNumber: o.trackingNumber || ""
+          };
+        });
+        setTransactions([...txData, ...orderData].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+      } catch (err) { console.error(err); } finally { setLoading(false); }
+    };
+    fetchAllHistory();
+  }, [client]);
 
   const filtered = useMemo(() => {
-    return history.filter(h => {
-      const d = new Date(h.createdAt);
-      if (searchId && !h.trackingNumber?.startsWith(searchId)) return false;
-      if (startDateTime && d < new Date(startDateTime)) return false;
-      if (endDateTime && d > new Date(endDateTime)) return false;
-      // 文字列の部分一致検索に変更
-      if (fromSvc && !h.fromName.toLowerCase().includes(fromSvc.toLowerCase())) return false;
-      if (toSvc && !h.toName.toLowerCase().includes(toSvc.toLowerCase())) return false;
-      if (minPts && h.points < parseInt(minPts)) return false;
-      if (maxPts && h.points > parseInt(maxPts)) return false;
-      return true;
+    if (!query) return transactions;
+    return transactions.filter(t => {
+      const d = new Date(t.createdAt).getTime();
+      const from = query.dtFrom ? new Date(query.dtFrom).getTime() : 0;
+      const to = query.dtTo ? new Date(query.dtTo).getTime() : Infinity;
+      const uNM = !query.uName || t.uName.toLowerCase().includes(query.uName.toLowerCase());
+      const uEM = !query.uEmail || t.userEmail.toLowerCase().includes(query.uEmail.toLowerCase());
+      const srcM = !query.src || t.rawSrc.toLowerCase().includes(query.src.toLowerCase());
+      const dstM = !query.dst || t.rawDst.toLowerCase().includes(query.dst.toLowerCase());
+      const trkM = !query.trackingNumber || t.trackingNumber.toLowerCase().includes(query.trackingNumber.toLowerCase());
+      const minM = query.minP ? t.amount >= parseInt(query.minP) : true;
+      const maxM = query.maxP ? t.amount <= parseInt(query.maxP) : true;
+      return d >= from && d <= to && uNM && uEM && srcM && dstM && trkM && minM && maxM;
     });
-  }, [history, searchId, startDateTime, endDateTime, fromSvc, toSvc, minPts, maxPts]);
+  }, [transactions, query]);
 
   const downloadCSV = () => {
-    const headers = ["区分", "日時", "ユーザー", "内容", "ポイント", "残高", "問い合わせ番号", "配送先名", "住所"];
-    const rows = filtered.map(h => [h.category, new Date(h.createdAt).toLocaleString(), h.user, h.displayTitle, h.points, h.dummyBalance || 0, h.trackingNumber || "", h.shippingName || "", h.shippingAddress || ""]);
-    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
-    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const now = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    const headers = "お問い合わせ番号,ユーザー名,メールアドレス,日時,交換元,交換ポイント,交換元残高,交換先/商品名,交換先残高\n";
+    const rows = filtered.map(t => 
+      `${t.trackingNumber},${t.uName},${t.userEmail},${t.createdAt ? new Date(t.createdAt).toLocaleString() : ""},${t.rawSrc},${t.amount},${t.srcBalance},${t.rawDst},${t.dstBalance}`
+    ).join("\n");
+    const blob = new Blob(["\uFEFF" + headers + rows], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `admin_history_${Date.now()}.csv`;
+    link.download = `admin_history_${now}.csv`;
     link.click();
   };
 
+  if (loading) return <div className="p-10 text-center font-black">LOADING...</div>;
+
   return (
-    <div className="space-y-6 p-4">
-      <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-50 shadow-sm space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <input type="text" className={inputClass} value={searchId} onChange={e => setSearchId(e.target.value)} placeholder="問合せ番号 (前方一致)" />
-          <input type="datetime-local" className={inputClass} value={startDateTime} onChange={e => setStartDateTime(e.target.value)} />
-          <input type="datetime-local" className={inputClass} value={endDateTime} onChange={e => setEndDateTime(e.target.value)} />
+    <div className="space-y-6">
+      <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4">
+          {[
+            { label: "お問い合わせ番号", key: "trackingNumber", type: "text" },
+            { label: "開始日時", key: "dtFrom", type: "datetime-local", step: "1" },
+            { label: "終了日時", key: "dtTo", type: "datetime-local", step: "1" },
+            { label: "ユーザー名", key: "uName", type: "text" },
+            { label: "メールアドレス", key: "uEmail", type: "text" },
+            { label: "交換元サービス", key: "src", type: "text" },
+            { label: "交換先 / 商品名", key: "dst", type: "text" },
+            { label: "最小ポイント", key: "minP", type: "number" },
+            { label: "最大ポイント", key: "maxP", type: "number" }
+          ].map(item => (
+            <div key={item.key} className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-1 block">{item.label}</label>
+              <input 
+                type={item.type} 
+                step={item.step} 
+                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:border-orange-400 focus:bg-white transition-all font-bold text-slate-800" 
+                value={(input as any)[item.key]} 
+                onChange={e=>setInput({...input, [item.key]:e.target.value})} 
+              />
+            </div>
+          ))}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input type="text" placeholder="交換元サービス名" className={inputClass} value={fromSvc} onChange={e => setFromSvc(e.target.value)} />
-          <input type="text" placeholder="交換先サービス名" className={inputClass} value={toSvc} onChange={e => setToSvc(e.target.value)} />
-        </div>
-        <div className="flex flex-col md:flex-row items-center gap-4">
-          <div className="flex-1 grid grid-cols-2 gap-4 w-full">
-            <input type="number" placeholder="最小pt" className={inputClass} value={minPts} onChange={e => setMinPts(e.target.value)} />
-            <input type="number" placeholder="最大pt" className={inputClass} value={maxPts} onChange={e => setMaxPts(e.target.value)} />
-          </div>
-          <button onClick={downloadCSV} className="w-full md:w-auto px-10 py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-orange-600 transition-all shadow-lg active:scale-95">CSV出力</button>
+        <div className="flex gap-4">
+          <button onClick={() => setQuery({...input})} className="flex-1 py-4 bg-slate-900 text-white text-[11px] font-black rounded-2xl hover:bg-orange-500 transition-all shadow-lg active:scale-95">検索開始</button>
+          <button onClick={() => { setInput(initialInput); setQuery(null); }} className="px-8 py-4 bg-slate-100 text-slate-500 text-[11px] font-black rounded-2xl hover:bg-slate-200 transition-all">リセット</button>
+          <button onClick={downloadCSV} className="px-10 py-4 bg-white text-slate-900 border-2 border-slate-200 text-[11px] font-black rounded-2xl hover:bg-slate-100 transition-all shadow-sm">CSV出力</button>
         </div>
       </div>
 
-      <div className="bg-white rounded-[2.5rem] border-2 border-slate-50 overflow-x-auto shadow-sm">
-        <table className="w-full text-left min-w-[800px]">
-          <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-            <tr><th className="p-5 text-center w-24">区分</th><th className="p-5">日時/ユーザー</th><th className="p-5">内容/ID</th><th className="p-5 text-right">ポイント</th></tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {filtered.map((h, i) => (
-              <tr key={i} className="hover:bg-slate-50 transition-colors">
-                <td className="p-5 text-center"><span className="text-2xl block">{h.icon}</span><span className="text-[8px] font-black text-slate-300">{h.category}</span></td>
-                <td className="p-5"><p className="text-[10px] font-bold text-slate-400">{new Date(h.createdAt).toLocaleString()}</p><p className="text-xs font-black">{h.user}</p></td>
-                <td className="p-5"><p className="text-sm font-black">{h.displayTitle}</p>{h.trackingNumber && <span className="text-[9px] bg-slate-900 text-white px-2 py-0.5 rounded-full font-mono uppercase">ID: {h.trackingNumber}</span>}</td>
-                <td className="p-5 text-right font-black text-orange-500">{h.points.toLocaleString()}pt</td>
+      <div className="bg-white rounded-[2rem] border-2 border-slate-200 overflow-hidden shadow-md">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 text-[10px] font-black text-slate-500 uppercase border-b-2 border-slate-200">
+                <th className="p-6 w-[280px]">User / Contact</th>
+                <th className="p-6 text-center">Transaction Details</th>
+                <th className="p-6 text-right w-[200px]">Amount</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filtered.map((t: any) => (
+                <tr key={t.id} className="hover:bg-slate-50/80 transition-colors border-b-2 border-slate-100 last:border-0">
+                  <td className="p-6 align-top border-r border-slate-50">
+                    <div className="text-sm font-black text-slate-900 mb-1 leading-tight">{t.uName}</div>
+                    <div className="text-[11px] text-slate-700 font-bold mb-1">{t.userEmail}</div>
+                    <div className="text-[11px] text-slate-500 font-medium mb-3">{new Date(t.createdAt).toLocaleString('ja-JP')}</div>
+                    {t.trackingNumber && (
+                      <div className="inline-block bg-slate-900 text-white text-[9px] font-black px-2 py-1 rounded tracking-wider shadow-sm">ID: {t.trackingNumber}</div>
+                    )}
+                  </td>
+                  <td className="p-6 align-top text-center border-r border-slate-50">
+                    <div className="inline-flex flex-col items-center space-y-1">
+                      <div className="bg-slate-100 px-3 py-1.5 rounded-lg text-[11px] font-bold text-slate-700 border border-slate-200">{t.displayFrom}</div>
+                      <div className="text-orange-500 font-black text-lg leading-none py-0.5">↓</div>
+                      <div className="bg-orange-50 px-3 py-1.5 rounded-lg text-[11px] font-bold text-slate-700 border border-orange-200">{t.displayTo}</div>
+                    </div>
+                  </td>
+                  <td className="p-6 text-right align-top">
+                    <div className="font-black text-orange-500 text-2xl tracking-tighter">
+                      {t.amount.toLocaleString()}<span className="text-[10px] ml-1">pts</span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

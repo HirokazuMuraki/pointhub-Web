@@ -56,19 +56,26 @@ export const handler: Schema["issueGifteeTicket"]["functionHandler"] = async (ev
 
 ギフトの交換が完了しました！以下のURLよりお受け取りください。
 
-■ お問い合わせ番号: ${trackingNumber}
-
-■ ギフト内容: ${giftName || brandProductId}
+■ お申し込み内容
+・お問い合わせ番号：${trackingNumber}
+・交換元サービス：${fromServiceName || "---"}
+・交換ギフト：${giftName || brandProductId}
+・消費ポイント：${point?.toLocaleString() ?? "---"} ポイント
 
 ■ ギフト受取URL:
 ${gifteeUrl}
 
 ■ ポイント利用詳細:
-・交換元ポイント：${fromServiceName || "不明"}
-・　消費ポイント：${point?.toLocaleString()} ポイント
-・　交換後の残高：${balanceAfter?.toLocaleString()} ポイント
+・交換元サービス：${fromServiceName || "---"}
+・　消費ポイント：${point?.toLocaleString() ?? "---"} ポイント
+・　交換後の残高：${balanceAfter?.toLocaleString() ?? "---"} ポイント
 
-ご利用ありがとうございました。`;
+※こちらのURLはマイページの「交換履歴」からもご確認いただけます。
+
+-----
+本メールはシステムより自動送信されています。
+ご利用ありがとうございました。
+-----`;
 
       await ses.send(new SendEmailCommand({
         Destination: { ToAddresses: [recipientEmail] },
@@ -86,7 +93,7 @@ ${gifteeUrl}
     return { 
       success: true, 
       url: gifteeUrl, 
-      orderId: trackingNumber, // 戻り値の orderId も問い合わせ番号に合わせるか、別途 message 等で返す運用が可能です
+      orderId: trackingNumber, 
       message: "Success" 
     };
   } catch (error: any) {

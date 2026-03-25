@@ -98,10 +98,8 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
 
   const handleGiftExchange = async () => {
     if (!selectedGift || !selectedServiceId || isProcessing) return;
-    
     const cred = userCredentials.find((c:any) => c.id === selectedServiceId);
     if (!cred) return;
-
     if (!confirm(`${selectedGift.name} と交換しますか？`)) return;
 
     setIsProcessing(true);
@@ -112,10 +110,10 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
       if (!latestGift || (selectedGift._type === 'master' && latestGift.stock < 1)) throw new Error("在庫がありません。");
 
       const trackingNumber = generateTrackingNumber();
-
       const balanceBefore = cred.dummyBalance || 0;
       const balanceAfter = balanceBefore - latestGift.pointCost;
 
+      // 1. ポイント減算
       if (!cred.serviceName.includes("ダミー")) {
         const info = getSvcInfo(cred.serviceId);
         const { data: opResult } = await client.mutations.operateShopservePoints({
@@ -125,20 +123,16 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
           amount: -latestGift.pointCost,
           note: `PointHub-Gift:${trackingNumber}`
         });
-
-        if (!opResult?.success) {
-          throw new Error(opResult?.message || "ShopServeのポイント減算に失敗しました。");
-        }
+        if (!opResult?.success) throw new Error(opResult?.message || "ポイント減算に失敗しました。");
       }
 
-      await client.models.UserServiceCredential.update({
-        id: cred.id,
-        dummyBalance: balanceAfter
-      });
+      // 2. 残高更新
+      await client.models.UserServiceCredential.update({ id: cred.id, dummyBalance: balanceAfter });
 
       let gifteeUrl = "";
       let gifteeOrderId = "";
 
+      // 3. ギフト種別ごとの処理
       if (selectedGift._type === 'giftee') {
         const targetProductId = latestGift.giftCode || latestGift.brandProductId;
         const { data: gifteeResult } = await client.queries.issueGifteeTicket({
@@ -156,21 +150,28 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
           gifteeOrderId = gifteeResult.orderId || "";
         }
       } else {
+        // 自社ギフト
         await client.models.GiftMaster.update({ id: latestGift.id, stock: latestGift.stock - 1 });
-        await client.mutations.sendOrderNotification({
-          userEmail, 
-          giftName: latestGift.name, 
-          pointSpent: latestGift.pointCost,
-          shippingName: shippingInfo.name, 
-          shippingZip: shippingInfo.zip,
-          shippingAddress: shippingInfo.address, 
-          shippingTel: shippingInfo.tel,
-          balanceBefore,
-          balanceAfter,
-          trackingNumber
+        
+        // --- 修正箇所: JSONに郵便番号と電話番号を追加 ---
+        await client.queries.sendEmail({
+          to: userEmail,
+          subject: "GIFT_ORDER",
+          body: JSON.stringify({
+            userName: shippingInfo.name,
+            trackingNumber: trackingNumber,
+            fromService: cred.serviceName,
+            toService: latestGift.name,
+            points: latestGift.pointCost,
+            balance: balanceAfter,
+            shippingZip: shippingInfo.zip,
+            shippingAddress: shippingInfo.address,
+            shippingTel: shippingInfo.tel
+          })
         });
       }
 
+      // 4. 履歴作成
       await client.models.GiftOrder.create({
         userEmail, giftId: latestGift.id, giftName: latestGift.name,
         pointSpent: latestGift.pointCost, dummyBalance: balanceAfter,
@@ -180,9 +181,7 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
         shippingZip: shippingInfo.zip || "000-0000",
         shippingAddress: shippingInfo.address || "デジタル送付",
         shippingTel: shippingInfo.tel || "000-0000-0000",
-        gifteeUrl, 
-        gifteeOrderId,
-        trackingNumber
+        gifteeUrl, gifteeOrderId, trackingNumber
       });
 
       alert(`交換が完了しました！\nお問い合わせ番号: ${trackingNumber}`);
@@ -206,12 +205,8 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
       <div className="animate-in fade-in duration-500">
         {exchangeTab === "points" ? (
           <PointExchange 
-            client={client} 
-            userEmail={userEmail} 
-            styles={styles} 
-            services={services} 
-            setActiveTab={setActiveTab} 
-            generateTrackingNumber={generateTrackingNumber}
+            client={client} userEmail={userEmail} styles={styles} services={services} 
+            setActiveTab={setActiveTab} generateTrackingNumber={generateTrackingNumber}
           />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">

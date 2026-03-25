@@ -4,20 +4,41 @@ import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 const ses = new SESClient({ region: "ap-northeast-1" });
 
 export const handler: Schema["sendOrderNotification"]["functionHandler"] = async (event) => {
-  const { 
-    userEmail,
-    giftName,
-    pointSpent,
-    shippingName,
-    shippingZip,
-    shippingAddress,
-    shippingTel,
-    balanceBefore,
-    balanceAfter,
-    trackingNumber
-  } = event.arguments;
-  
   const SENDER_EMAIL = "ph-web@waq-up.com";
+  
+  const args = event.arguments as any;
+  let { 
+    userEmail, 
+    giftName, 
+    pointSpent, 
+    shippingName, 
+    shippingZip, 
+    shippingAddress, 
+    shippingTel, 
+    balanceBefore, 
+    balanceAfter, 
+    trackingNumber,
+    orderSourceName
+  } = args;
+
+  // 2. テンプレート方式（sendEmail経由）でJSONが送られてきた場合の処理
+  if (args.subject === "GIFT_ORDER" && args.body) {
+    try {
+      const data = JSON.parse(args.body);
+      userEmail = args.to;
+      giftName = data.toService;
+      pointSpent = data.points;
+      shippingName = data.userName;
+      shippingZip = data.shippingZip;       // JSONから抽出
+      shippingAddress = data.shippingAddress;
+      shippingTel = data.shippingTel;       // JSONから抽出
+      balanceAfter = data.balance;
+      trackingNumber = data.trackingNumber;
+      orderSourceName = data.fromService; 
+    } catch (e) {
+      console.error("JSON Parse Error:", e);
+    }
+  }
 
   if (!userEmail) {
     return { success: false, message: "User email is required." };
@@ -26,34 +47,35 @@ export const handler: Schema["sendOrderNotification"]["functionHandler"] = async
   try {
     const subject = `【PointHub】ギフト交換申し込み受付のお知らせ（${giftName}）`;
     
-    const bodyText = `${shippingName} 様
+    const bodyText = `${shippingName || "お客様"} 様
 
 ギフトの交換申し込みを受け付けました！
 商品の発送準備が整いましたら、改めてご連絡させていただきます。
 
 ■ お申し込み内容
 ・お問い合わせ番号：${trackingNumber || "---"}
+・交換元サービス：${orderSourceName || "---"}
 ・交換ギフト：${giftName}
-・消費ポイント：${pointSpent?.toLocaleString()} ポイント
+・消費ポイント：${pointSpent?.toLocaleString() ?? "---"} ポイント
 
 ■ ポイント利用詳細:
-・交換元ポイント：${balanceBefore?.toLocaleString() ?? "---"} ポイント
+・交換元サービス：${orderSourceName || "---"}
 ・　消費ポイント：${pointSpent?.toLocaleString() ?? "---"} ポイント
 ・　交換後の残高：${balanceAfter?.toLocaleString() ?? "---"} ポイント
 
 ■ お届け先情報
-・お名前：${shippingName}
-・郵便番号：${shippingZip}
-・ご住所：${shippingAddress}
-・電話番号：${shippingTel}
+・お名前：${shippingName || "---"}
+・郵便番号：${shippingZip || "---"}
+・ご住所：${shippingAddress || "---"}
+・電話番号：${shippingTel || "---"}
 
 ※お届け先情報に誤りがある場合は、速やかに事務局までご連絡ください。
 ※お問い合わせの際は、上記「お問い合わせ番号」をお伝えいただくとスムーズです。
 
---------------------------------------------------
+-----
 本メールはシステムより自動送信されています。
 ご利用ありがとうございました。
---------------------------------------------------`;
+-----`;
 
     await ses.send(new SendEmailCommand({
       Destination: { 

@@ -48,7 +48,7 @@ const schema = a.schema({
     status: a.string(),
     dummyBalance: a.integer().default(300),
     errorMessage: a.string(),
-    trackingNumber: a.string(), // 追加：問い合わせ番号
+    trackingNumber: a.string(), 
   }).authorization((allow) => [allow.authenticated()]),
 
   GiftMaster: a.model({
@@ -92,7 +92,7 @@ const schema = a.schema({
     shippingTel: a.string(),
     gifteeUrl: a.string(),
     gifteeOrderId: a.string(),
-    trackingNumber: a.string(), // 追加：問い合わせ番号
+    trackingNumber: a.string(), 
   }).authorization((allow) => [
     allow.owner(),
     allow.group("Admins")
@@ -161,7 +161,8 @@ const schema = a.schema({
       shippingTel: a.string().required(),
       balanceBefore: a.integer(),
       balanceAfter: a.integer(),
-      trackingNumber: a.string(), // 追加：問い合わせ番号
+      trackingNumber: a.string(),
+      orderSourceName: a.string(), // 追加：引数として受け取れるように
     })
     .returns(a.customType({
       success: a.boolean(),
@@ -179,13 +180,28 @@ const schema = a.schema({
       shippingZip: a.string(),
       shippingAddress: a.string(),
       shippingTel: a.string(),
-      trackingNumber: a.string(), // 追加：問い合わせ番号
+      trackingNumber: a.string(),
     })
     .returns(a.customType({
       success: a.boolean(),
       message: a.string(),
     }))
     .handler(a.handler.function(sendShipmentNotification))
+    .authorization(allow => [allow.authenticated()]),
+
+  // 追加：共通メール送信クエリ (テンプレート方式用)
+  sendEmail: a
+    .query()
+    .arguments({
+      to: a.string().required(),
+      subject: a.string().required(),
+      body: a.string().required(),
+    })
+    .returns(a.customType({
+      success: a.boolean(),
+      message: a.string(),
+    }))
+    .handler(a.handler.function(sendOrderNotification)) // 既存の送信関数を再利用
     .authorization(allow => [allow.authenticated()]),
 });
 
