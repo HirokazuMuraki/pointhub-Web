@@ -4,6 +4,21 @@ import { useState, useEffect, useCallback } from "react";
 import { PointExchange } from "./PointExchange";
 import { getUrl } from "aws-amplify/storage";
 
+// 問い合わせ番号生成ユーティリティ
+const generateTrackingNumber = () => {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const datePart = `${yy}${mm}${dd}`;
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let randomPart = '';
+  for (let i = 0; i < 5; i++) {
+    randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `${datePart}-${randomPart}`;
+};
+
 const GiftImage = ({ path }: { path: string }) => {
   const [url, setUrl] = useState<string>("");
   useEffect(() => {
@@ -24,7 +39,6 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
   const [isProcessing, setIsProcessing] = useState(false);
   const [shippingInfo, setShippingInfo] = useState({ name: "", zip: "", address: "", tel: "" });
 
-  // PointExchange.tsx と同一のサービス情報取得ロジック
   const getSvcInfo = useCallback((serviceId: string) => {
     const svcMaster = services.find((s: any) => s.id === serviceId);
     if (!svcMaster) return null;
@@ -49,7 +63,7 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
       const { data } = await client.models.UserServiceCredential.list({ filter: { userEmail: { eq: userEmail } } });
       if (data) {
         setUserCredentials(data);
-        if (data.length > 0 && !selectedServiceId) setSelectedServiceId(data[0].serviceId);
+        if (data.length > 0 && !selectedServiceId) setSelectedServiceId(data[0].id);
       }
     } catch (err) { console.error("認証情報取得失敗:", err); }
   };
@@ -85,7 +99,7 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
   const handleGiftExchange = async () => {
     if (!selectedGift || !selectedServiceId || isProcessing) return;
     
-    const cred = userCredentials.find((c:any) => c.serviceId === selectedServiceId);
+    const cred = userCredentials.find((c:any) => c.id === selectedServiceId);
     if (!cred) return;
 
     if (!confirm(`${selectedGift.name} と交換しますか？`)) return;
@@ -97,17 +111,19 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
       const { data: latestGift } = await (client.models as any)[modelName].get({ id: selectedGift.id });
       if (!latestGift || (selectedGift._type === 'master' && latestGift.stock < 1)) throw new Error("在庫がありません。");
 
-      // --- ShopServe ポイント減算処理 (PointExchange のロジックを移植) ---
-      const balanceAfter = (cred.dummyBalance || 0) - latestGift.pointCost;
+      const trackingNumber = generateTrackingNumber();
+
+      const balanceBefore = cred.dummyBalance || 0;
+      const balanceAfter = balanceBefore - latestGift.pointCost;
 
       if (!cred.serviceName.includes("ダミー")) {
         const info = getSvcInfo(cred.serviceId);
         const { data: opResult } = await client.mutations.operateShopservePoints({
-          accountId: cred.loginId, // accountId ではなく loginId を使用
+          accountId: cred.loginId,
           shopId: info?.shopId,
           authKey: info?.masterAuthKey || cred.password,
           amount: -latestGift.pointCost,
-          note: "PointHub-Gift"
+          note: `PointHub-Gift:${trackingNumber}`
         });
 
         if (!opResult?.success) {
@@ -115,15 +131,14 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
         }
       }
 
-      // DBの残高を更新
       await client.models.UserServiceCredential.update({
         id: cred.id,
         dummyBalance: balanceAfter
       });
 
-      // --- 各種ギフト処理 (Giftee発行 / 通知) ---
       let gifteeUrl = "";
       let gifteeOrderId = "";
+
       if (selectedGift._type === 'giftee') {
         const targetProductId = latestGift.giftCode || latestGift.brandProductId;
         const { data: gifteeResult } = await client.queries.issueGifteeTicket({
@@ -143,13 +158,19 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
       } else {
         await client.models.GiftMaster.update({ id: latestGift.id, stock: latestGift.stock - 1 });
         await client.mutations.sendOrderNotification({
-          userEmail, giftName: latestGift.name, pointSpent: latestGift.pointCost,
-          shippingName: shippingInfo.name, shippingZip: shippingInfo.zip,
-          shippingAddress: shippingInfo.address, shippingTel: shippingInfo.tel,
+          userEmail, 
+          giftName: latestGift.name, 
+          pointSpent: latestGift.pointCost,
+          shippingName: shippingInfo.name, 
+          shippingZip: shippingInfo.zip,
+          shippingAddress: shippingInfo.address, 
+          shippingTel: shippingInfo.tel,
+          balanceBefore,
+          balanceAfter,
+          trackingNumber
         });
       }
 
-      // 注文履歴の作成
       await client.models.GiftOrder.create({
         userEmail, giftId: latestGift.id, giftName: latestGift.name,
         pointSpent: latestGift.pointCost, dummyBalance: balanceAfter,
@@ -159,10 +180,12 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
         shippingZip: shippingInfo.zip || "000-0000",
         shippingAddress: shippingInfo.address || "デジタル送付",
         shippingTel: shippingInfo.tel || "000-0000-0000",
-        gifteeUrl, gifteeOrderId
+        gifteeUrl, 
+        gifteeOrderId,
+        trackingNumber
       });
 
-      alert("交換が完了しました！");
+      alert(`交換が完了しました！\nお問い合わせ番号: ${trackingNumber}`);
       setSelectedGift(null);
       await Promise.all([fetchGifts(), fetchCredentials()]);
 
@@ -182,7 +205,14 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
       </div>
       <div className="animate-in fade-in duration-500">
         {exchangeTab === "points" ? (
-          <PointExchange client={client} userEmail={userEmail} styles={styles} services={services} setActiveTab={setActiveTab} />
+          <PointExchange 
+            client={client} 
+            userEmail={userEmail} 
+            styles={styles} 
+            services={services} 
+            setActiveTab={setActiveTab} 
+            generateTrackingNumber={generateTrackingNumber}
+          />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
             {gifts.map((gift) => (

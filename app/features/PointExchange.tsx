@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 
-export const PointExchange = ({ client, userEmail, styles, services, setActiveTab }: any) => {
+export const PointExchange = ({ client, userEmail, styles, services, setActiveTab, generateTrackingNumber }: any) => {
   const [credentials, setCredentials] = useState<any[]>([]);
   const [fromCredId, setFromCredId] = useState("");
   const [toCredId, setToCredId] = useState("");
@@ -71,7 +71,9 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
     setIsProcessing(true);
 
     try {
-      // 交換後の残高をあらかじめ計算
+      // 親から渡された関数で一意の番号を生成
+      const trackingNumber = generateTrackingNumber ? generateTrackingNumber() : `TX-${Date.now()}`;
+
       const fromBalanceAfter = (fromCred.dummyBalance || 0) - val;
       const toBalanceAfter = (toCred.dummyBalance || 0) + val;
 
@@ -88,27 +90,27 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
             shopId: info?.shopId,
             authKey: info?.masterAuthKey || t.cred.password,
             amount: t.op,
-            note: "PointHub"
+            note: `PH-Exchange:${trackingNumber}` // 外部サービスのメモにも番号を付与
           });
         }
-        // DBの残高を更新
         await client.models.UserServiceCredential.update({
           id: t.cred.id,
           dummyBalance: t.newBal
         });
       }
 
-      // 履歴を作成（交換元の確定後残高を記録）
+      // 履歴を作成（問い合わせ番号を保存）
       await client.models.ExchangeTransaction.create({
         userEmail, 
         fromServiceName: fromCred.serviceName, 
         toServiceName: toCred.serviceName, 
         amount: val, 
-        dummyBalance: fromBalanceAfter, // ← ここに計算後の残高をセット！
-        status: "COMPLETED"
+        dummyBalance: fromBalanceAfter,
+        status: "COMPLETED",
+        trackingNumber // ← ここに生成した番号をセット
       });
 
-      alert("交換完了！");
+      alert(`交換完了！\nお問い合わせ番号: ${trackingNumber}`);
       setAmount("");
       if (setActiveTab) setActiveTab("history");
     } catch (e: any) {

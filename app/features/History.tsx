@@ -1,128 +1,110 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 
-export const HistoryList = ({ client, userEmail, styles }: any) => {
-  const [transactions, setTransactions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  
-  const initialInput = { 
-    dateFrom: "", dateTo: "", minAmt: "", maxAmt: "", srcName: "", dstName: "" 
-  };
-  const [input, setInput] = useState(initialInput);
-  const [query, setQuery] = useState<any>(null);
+export const HistoryList = ({ client, userEmail }: any) => {
+  const [history, setHistory] = useState<any[]>([]);
+  const [searchId, setSearchId] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [fromSvc, setFromSvc] = useState("");
+  const [toSvc, setToSvc] = useState("");
+  const [minPts, setMinPts] = useState("");
+  const [maxPts, setMaxPts] = useState("");
+
+  const inputClass = "w-full p-3 bg-slate-50 border-2 border-transparent rounded-xl text-sm font-bold focus:border-orange-500 outline-none transition-all";
 
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        const [txRes, orderRes, credRes] = await Promise.all([
+        const [exRes, giftRes] = await Promise.all([
           client.models.ExchangeTransaction.list({ filter: { userEmail: { eq: userEmail } } }),
-          client.models.GiftOrder.list({ filter: { userEmail: { eq: userEmail } } }),
-          client.models.UserServiceCredential.list({ filter: { userEmail: { eq: userEmail } } })
+          client.models.GiftOrder.list({ filter: { userEmail: { eq: userEmail } } })
         ]);
-
-        const creds = credRes.data || [];
-        const getLatestBal = (svcName: string) => {
-          const c = creds.find((i: any) => i.serviceName === svcName);
-          return c ? c.dummyBalance : null;
-        };
-
-        const txData = (txRes.data || []).map((t: any) => {
-          const latestToBal = getLatestBal(t.toServiceName);
-          return {
-            ...t, 
-            rawSrc: t.fromServiceName || "", 
-            rawDst: t.toServiceName || "",
-            srcBalance: t.dummyBalance || 0,
-            dstBalance: latestToBal !== null ? latestToBal : "-",
-            displayFrom: `${t.fromServiceName} (残高:${(t.dummyBalance || 0).toLocaleString()}pts)`,
-            displayTo: `${t.toServiceName}${latestToBal !== null ? ` (残高:${latestToBal.toLocaleString()}pts)` : ""}`,
-          };
-        });
-
-        const orderData = (orderRes.data || []).map((o: any) => ({
-          ...o, 
-          rawSrc: o.orderSourceName || "", 
-          rawDst: o.giftName || "",
-          srcBalance: o.dummyBalance || 0,
-          dstBalance: "", 
-          displayFrom: `${o.orderSourceName || "ギフト元"} (残高:${(o.dummyBalance || 0).toLocaleString()}pts)`,
-          displayTo: o.giftName, 
-          amount: o.pointSpent,
+        
+        const exData = (exRes.data || []).map((d: any) => ({
+          ...d,
+          type: "ポイント交換",
+          icon: "🪙",
+          date: d.createdAt,
+          title: `${d.fromServiceName} → ${d.toServiceName}`,
+          fromName: d.fromServiceName || "",
+          toName: d.toServiceName || "",
+          points: d.amount || 0,
+          isNegative: false
         }));
 
-        setTransactions([...txData, ...orderData]);
-      } catch (err) { console.error(err); } finally { setLoading(false); }
+        const giftData = (giftRes.data || []).map((d: any) => ({
+          ...d,
+          type: "ギフト交換",
+          icon: "🎁",
+          date: d.createdAt,
+          title: d.giftName,
+          fromName: d.orderSourceName || "",
+          toName: "ギフト受取",
+          points: d.pointSpent || 0,
+          isNegative: true
+        }));
+
+        setHistory([...exData, ...giftData].sort((a, b) => 
+          new Date(b.date).getTime() - new Date(a.date).getTime()
+        ));
+      } catch (e) { console.error(e); }
     };
     fetchHistory();
   }, [client, userEmail]);
 
   const filtered = useMemo(() => {
-    const list = query ? transactions.filter(t => {
-      const d = new Date(t.createdAt).getTime();
-      const from = query.dateFrom ? new Date(query.dateFrom).getTime() : 0;
-      const to = query.dateTo ? new Date(query.dateTo).setHours(23,59,59) : Infinity;
-      const minP = query.minAmt ? t.amount >= parseInt(query.minAmt) : true;
-      const maxP = query.maxAmt ? t.amount <= parseInt(query.maxAmt) : true;
-      const srcM = !query.srcName || t.rawSrc.toLowerCase().includes(query.srcName.toLowerCase());
-      const dstM = !query.dstName || t.rawDst.toLowerCase().includes(query.dstName.toLowerCase());
-      return d >= from && d <= to && minP && maxP && srcM && dstM;
-    }) : transactions;
-    return [...list].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [transactions, query]);
-
-  const downloadCSV = () => {
-    const now = new Date().toISOString().split('T')[0].replace(/-/g, '');
-    const headers = "日時,交換元,交換ポイント,交換元残高,交換先/商品名,交換先残高\n";
-    const rows = filtered.map(t => 
-      `${t.createdAt ? new Date(t.createdAt).toLocaleString() : ""},${t.rawSrc},${t.amount},${t.srcBalance},${t.rawDst},${t.dstBalance}`
-    ).join("\n");
-    const blob = new Blob(["\uFEFF" + headers + rows], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `history_${now}.csv`;
-    link.click();
-  };
-
-  if (loading) return <div className="p-10 text-center font-black">LOADING...</div>;
+    return history.filter(h => {
+      const d = new Date(h.date);
+      if (searchId && !h.trackingNumber?.startsWith(searchId)) return false;
+      if (startDate && d < new Date(startDate)) return false;
+      if (endDate && d > new Date(endDate + "T23:59:59")) return false;
+      // 文字列の部分一致検索に変更
+      if (fromSvc && !h.fromName.toLowerCase().includes(fromSvc.toLowerCase())) return false;
+      if (toSvc && !h.toName.toLowerCase().includes(toSvc.toLowerCase())) return false;
+      if (minPts && h.points < parseInt(minPts)) return false;
+      if (maxPts && h.points > parseInt(maxPts)) return false;
+      return true;
+    });
+  }, [history, searchId, startDate, endDate, fromSvc, toSvc, minPts, maxPts]);
 
   return (
-    <div className="p-6">
-      <div className="bg-slate-50 p-6 rounded-[2rem] mb-8 border-2 border-white shadow-inner space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {[
-            { label: "期間 (開始)", key: "dateFrom", type: "date" },
-            { label: "期間 (終了)", key: "dateTo", type: "date" },
-            { label: "交換元サービス名", key: "srcName", type: "text" },
-            { label: "交換先/商品名", key: "dstName", type: "text" },
-            { label: "最小ポイント", key: "minAmt", type: "number" },
-            { label: "最大ポイント", key: "maxAmt", type: "number" }
-          ].map(item => (
-            <div key={item.key}>
-              <label className="text-[11px] font-black text-black uppercase ml-1 block mb-1">{item.label}</label>
-              <input type={item.type} className="w-full p-3 rounded-xl border-none text-xs outline-none shadow-sm" 
-                value={(input as any)[item.key]} onChange={e=>setInput({...input, [item.key]:e.target.value})} />
-            </div>
-          ))}
+    <div className="space-y-6 max-w-4xl mx-auto p-4">
+      <div className="bg-white p-6 rounded-[2.5rem] border-2 border-slate-50 shadow-sm space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <input type="text" placeholder="問合せ番号(前方一致)" className={inputClass} value={searchId} onChange={e => setSearchId(e.target.value)} />
+          <input type="date" className={inputClass} value={startDate} onChange={e => setStartDate(e.target.value)} />
+          <input type="date" className={inputClass} value={endDate} onChange={e => setEndDate(e.target.value)} />
         </div>
-        <div className="flex gap-3">
-          <button onClick={() => setQuery({...input})} className="flex-1 py-3 bg-slate-900 text-white text-[11px] font-black rounded-xl hover:bg-orange-500 transition-all">検索開始</button>
-          <button onClick={() => { setInput(initialInput); setQuery(null); }} className="px-6 py-3 bg-slate-200 text-slate-700 text-[11px] font-black rounded-xl hover:bg-slate-300 transition-all">条件クリア</button>
-          <button onClick={downloadCSV} className="px-6 py-3 bg-white text-slate-900 border-2 border-slate-200 text-[11px] font-black rounded-xl hover:bg-slate-100 transition-all">CSV出力</button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <input type="text" placeholder="交換元サービス名" className={inputClass} value={fromSvc} onChange={e => setFromSvc(e.target.value)} />
+          <input type="text" placeholder="交換先サービス名" className={inputClass} value={toSvc} onChange={e => setToSvc(e.target.value)} />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <input type="number" placeholder="最小pt" className={inputClass} value={minPts} onChange={e => setMinPts(e.target.value)} />
+          <input type="number" placeholder="最大pt" className={inputClass} value={maxPts} onChange={e => setMaxPts(e.target.value)} />
         </div>
       </div>
-      <div className="space-y-3">
-        {filtered.map((t: any) => (
-          <div key={t.id} className="py-4 px-6 bg-white border-2 border-slate-50 rounded-[1.5rem] flex justify-between items-center shadow-sm">
-            <div className="flex-1">
-              <p className="text-[10px] text-slate-400 mb-1">{new Date(t.createdAt).toLocaleString('ja-JP')}</p>
-              <div className="flex items-center space-x-2">
-                <span className="font-bold text-slate-700 text-sm">{t.displayFrom}</span>
-                <span className="text-orange-500 font-black">→</span>
-                <span className="font-bold text-slate-700 text-sm">{t.displayTo}</span>
+
+      <div className="space-y-4">
+        {filtered.map((item, idx) => (
+          <div key={idx} className="bg-white p-5 rounded-[2rem] border-2 border-slate-50 shadow-sm flex items-center gap-4">
+            <div className="text-2xl w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center shrink-0">{item.icon}</div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 uppercase">{item.type}</span>
+                <span className="text-[10px] font-bold text-slate-400">{new Date(item.date).toLocaleString()}</span>
               </div>
+              <h4 className="font-black text-slate-800 truncate text-sm">{item.title}</h4>
+              {item.trackingNumber && <span className="text-[9px] bg-slate-900 text-white px-2 py-0.5 rounded-full font-mono mt-1 inline-block">ID: {item.trackingNumber}</span>}
             </div>
-            <p className="font-black text-xl text-orange-500 ml-4">{t.amount.toLocaleString()}pts</p>
+            <div className="text-right">
+              <p className={`font-black text-lg ${item.isNegative ? "text-red-500" : "text-orange-500"}`}>
+                {item.isNegative ? "-" : "+"}{item.points.toLocaleString()}pt
+              </p>
+              <p className="text-[10px] font-bold text-slate-300">残: {item.dummyBalance?.toLocaleString()}pt</p>
+            </div>
           </div>
         ))}
       </div>

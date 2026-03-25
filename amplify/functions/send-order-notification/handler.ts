@@ -11,11 +11,13 @@ export const handler: Schema["sendOrderNotification"]["functionHandler"] = async
     shippingName,
     shippingZip,
     shippingAddress,
-    shippingTel 
+    shippingTel,
+    balanceBefore,
+    balanceAfter,
+    trackingNumber
   } = event.arguments;
   
   const SENDER_EMAIL = "ph-web@waq-up.com";
-  // const ADMIN_EMAIL = "ph-web@waq-up.com"; // 管理者用アドレス（現在は未使用）
 
   if (!userEmail) {
     return { success: false, message: "User email is required." };
@@ -30,8 +32,14 @@ export const handler: Schema["sendOrderNotification"]["functionHandler"] = async
 商品の発送準備が整いましたら、改めてご連絡させていただきます。
 
 ■ お申し込み内容
+・お問い合わせ番号：${trackingNumber || "---"}
 ・交換ギフト：${giftName}
 ・消費ポイント：${pointSpent?.toLocaleString()} ポイント
+
+■ ポイント利用詳細:
+・交換元ポイント：${balanceBefore?.toLocaleString() ?? "---"} ポイント
+・　消費ポイント：${pointSpent?.toLocaleString() ?? "---"} ポイント
+・　交換後の残高：${balanceAfter?.toLocaleString() ?? "---"} ポイント
 
 ■ お届け先情報
 ・お名前：${shippingName}
@@ -40,17 +48,16 @@ export const handler: Schema["sendOrderNotification"]["functionHandler"] = async
 ・電話番号：${shippingTel}
 
 ※お届け先情報に誤りがある場合は、速やかに事務局までご連絡ください。
+※お問い合わせの際は、上記「お問い合わせ番号」をお伝えいただくとスムーズです。
 
 --------------------------------------------------
 本メールはシステムより自動送信されています。
 ご利用ありがとうございました。
 --------------------------------------------------`;
 
-    // ユーザーのみにメールを送信
     await ses.send(new SendEmailCommand({
       Destination: { 
         ToAddresses: [userEmail],
-        // CcAddresses: [ADMIN_EMAIL] // 管理者への通知は現在無効化
       },
       Message: {
         Body: { 

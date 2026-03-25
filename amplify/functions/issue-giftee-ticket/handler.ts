@@ -1,5 +1,6 @@
 import type { Schema } from "../../data/resource";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
+import { generateTrackingNumber } from "../utils/tracking";
 
 const ses = new SESClient({ region: "ap-northeast-1" });
 
@@ -28,6 +29,9 @@ export const handler: Schema["issueGifteeTicket"]["functionHandler"] = async (ev
   const WORKER_TOKEN = "Exchange_Giftee_via_PointHub_2026";
   const issueIdentity = `order-${userId}-${Date.now()}`;
   
+  // 【新規発行】問い合わせ番号を生成
+  const trackingNumber = generateTrackingNumber();
+  
   const isBoxMode = (category === "giftee-box" || category === "box");
   const apiPath = isBoxMode ? "/api/giftee_boxes" : "/api/gift_cards";
 
@@ -51,6 +55,8 @@ export const handler: Schema["issueGifteeTicket"]["functionHandler"] = async (ev
       const bodyText = `${displayName}
 
 ギフトの交換が完了しました！以下のURLよりお受け取りください。
+
+■ お問い合わせ番号: ${trackingNumber}
 
 ■ ギフト内容: ${giftName || brandProductId}
 
@@ -76,7 +82,13 @@ ${gifteeUrl}
       console.error("SES Mail Send Error:", mailError);
     }
 
-    return { success: true, url: gifteeUrl, orderId: issueIdentity, message: "Success" };
+    // フロントエンド側でこの trackingNumber を GiftOrder の作成（保存）に利用します
+    return { 
+      success: true, 
+      url: gifteeUrl, 
+      orderId: trackingNumber, // 戻り値の orderId も問い合わせ番号に合わせるか、別途 message 等で返す運用が可能です
+      message: "Success" 
+    };
   } catch (error: any) {
     console.error("Lambda Error:", error);
     return { success: false, message: error.message, url: "", orderId: issueIdentity };

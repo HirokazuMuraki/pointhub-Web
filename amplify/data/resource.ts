@@ -48,6 +48,7 @@ const schema = a.schema({
     status: a.string(),
     dummyBalance: a.integer().default(300),
     errorMessage: a.string(),
+    trackingNumber: a.string(), // 追加：問い合わせ番号
   }).authorization((allow) => [allow.authenticated()]),
 
   GiftMaster: a.model({
@@ -91,6 +92,7 @@ const schema = a.schema({
     shippingTel: a.string(),
     gifteeUrl: a.string(),
     gifteeOrderId: a.string(),
+    trackingNumber: a.string(), // 追加：問い合わせ番号
   }).authorization((allow) => [
     allow.owner(),
     allow.group("Admins")
@@ -157,6 +159,9 @@ const schema = a.schema({
       shippingZip: a.string().required(),
       shippingAddress: a.string().required(),
       shippingTel: a.string().required(),
+      balanceBefore: a.integer(),
+      balanceAfter: a.integer(),
+      trackingNumber: a.string(), // 追加：問い合わせ番号
     })
     .returns(a.customType({
       success: a.boolean(),
@@ -171,6 +176,10 @@ const schema = a.schema({
       userEmail: a.string().required(),
       giftName: a.string().required(),
       shippingName: a.string().required(),
+      shippingZip: a.string(),
+      shippingAddress: a.string(),
+      shippingTel: a.string(),
+      trackingNumber: a.string(), // 追加：問い合わせ番号
     })
     .returns(a.customType({
       success: a.boolean(),

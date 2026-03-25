@@ -125,12 +125,15 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
       // 1. ステータス更新
       await client.models.GiftOrder.update({ id: order.id, status: "SHIPPED" });
       
-      // 2. 発送完了メール送信
+      // 2. 発送完了メール送信 (お届け先情報を追加)
       try {
         await client.mutations.sendShipmentNotification({
           userEmail: order.userEmail,
           giftName: order.giftName,
-          shippingName: order.shippingName || "お客様"
+          shippingName: order.shippingName || "お客様",
+          shippingZip: order.shippingZip || "---",
+          shippingAddress: order.shippingAddress || "---",
+          shippingTel: order.shippingTel || "---"
         });
       } catch (mailErr) {
         console.error("メール送信失敗（管理用）:", mailErr);
