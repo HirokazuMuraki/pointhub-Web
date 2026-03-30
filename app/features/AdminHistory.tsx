@@ -31,6 +31,7 @@ export const AdminHistory = ({ client, styles }: any) => {
           const latestToBal = getLatestBal(t.userEmail, t.toServiceName);
           return {
             ...t, 
+            icon: "🪙",
             uName: nameMap.get(t.userEmail) || "不明",
             rawSrc: t.fromServiceName || "", 
             rawDst: t.toServiceName || "",
@@ -44,6 +45,7 @@ export const AdminHistory = ({ client, styles }: any) => {
         const orderData = (orderRes.data || []).map((o: any) => {
           return {
             ...o, 
+            icon: "🎁",
             uName: nameMap.get(o.userEmail) || o.shippingName || "不明",
             rawSrc: o.orderSourceName || "", 
             rawDst: o.giftName || "",
@@ -141,7 +143,10 @@ export const AdminHistory = ({ client, styles }: any) => {
               {filtered.map((t: any) => (
                 <tr key={t.id} className="hover:bg-slate-50/80 transition-colors border-b-2 border-slate-100 last:border-0">
                   <td className="p-6 align-top border-r border-slate-50">
-                    <div className="text-sm font-black text-slate-900 mb-1 leading-tight">{t.uName}</div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-lg">{t.icon}</span>
+                      <div className="text-sm font-black text-slate-900 leading-tight">{t.uName}</div>
+                    </div>
                     <div className="text-[11px] text-slate-700 font-bold mb-1">{t.userEmail}</div>
                     <div className="text-[11px] text-slate-500 font-medium mb-3">{new Date(t.createdAt).toLocaleString('ja-JP')}</div>
                     {t.trackingNumber && (

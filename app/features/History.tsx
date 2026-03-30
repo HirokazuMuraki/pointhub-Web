@@ -31,6 +31,7 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
           const latestToBal = getLatestBal(t.toServiceName);
           return {
             ...t, 
+            icon: "🪙",
             rawSrc: t.fromServiceName || "", 
             rawDst: t.toServiceName || "",
             srcBalance: t.dummyBalance || 0,
@@ -43,6 +44,7 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
 
         const orderData = (orderRes.data || []).map((o: any) => ({
           ...o, 
+          icon: "🎁",
           rawSrc: o.orderSourceName || "", 
           rawDst: o.giftName || "",
           srcBalance: o.dummyBalance || 0,
@@ -133,7 +135,10 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
             <div key={t.id} className="p-6 hover:bg-slate-50/50 transition-colors">
               <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-4">
                 <div className="sm:col-span-3 space-y-1.5">
-                  <div className="text-[11px] font-bold text-slate-700 leading-tight">{new Date(t.createdAt).toLocaleString('ja-JP')}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{t.icon}</span>
+                    <div className="text-[11px] font-bold text-slate-700 leading-tight">{new Date(t.createdAt).toLocaleString('ja-JP')}</div>
+                  </div>
                   {t.trackingNumber && (
                     <div className="inline-block bg-slate-900 text-white text-[9px] font-black px-2 py-1 rounded tracking-wider shadow-sm">ID: {t.trackingNumber}</div>
                   )}
