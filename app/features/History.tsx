@@ -144,10 +144,25 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
                   )}
                 </div>
                 <div className="sm:col-span-6 flex flex-col items-start sm:items-center">
-                  <div className="inline-flex flex-col items-center space-y-1">
+                  <div className="inline-flex flex-col items-center space-y-1 w-full max-w-md">
                     <div className="bg-slate-100 px-3 py-1 rounded-lg text-[11px] font-bold text-slate-700 border border-slate-200">{t.displayFrom}</div>
                     <div className="text-orange-500 font-black text-lg leading-none py-0.5">↓</div>
                     <div className="bg-orange-50 px-3 py-1 rounded-lg text-[11px] font-bold text-slate-800 border border-orange-200">{t.displayTo}</div>
+                    
+                    {/* 追加: gifteeUrlが存在する場合のみURLを表示 */}
+                    {t.gifteeUrl && (
+                      <div className="mt-2 w-full flex flex-col items-center">
+                        <div className="text-[9px] font-black text-orange-400 uppercase tracking-tighter mb-0.5">Gift Receipt URL</div>
+                        <a 
+                          href={t.gifteeUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="text-[10px] text-blue-500 font-bold hover:underline break-all bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 text-center"
+                        >
+                          {t.gifteeUrl}
+                        </a>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="sm:col-span-3 text-left sm:text-right">

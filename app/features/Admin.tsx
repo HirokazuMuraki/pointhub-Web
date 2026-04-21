@@ -189,6 +189,7 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
 
   const handleGiftSubmit = async () => {
     if (!newGiftName) return alert("ギフト名を入力してください");
+    if (giftDescription.length > 400) return alert("説明文は400文字以内で入力してください");
     const pointsNum = parseInt(giftPoints, 10);
     const stockNum = parseInt(giftStock, 10);
     if (isNaN(pointsNum) || pointsNum < 1) return alert("必要ポイント数は1以上で入力してください");
@@ -206,12 +207,14 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
   const handleGifteeSubmit = async () => {
     if (!newGiftName) return alert("ギフト名称を入力してください");
     if (!gifteeCode) return alert("ギフトコードを入力してください");
+    if (giftDescription.length > 400) return alert("説明文は400文字以内で入力してください");
     const pointsNum = parseInt(giftPoints, 10);
     setIsProcessing(true);
     try {
       const payload = {
         type: gifteeType,
         name: newGiftName,
+        description: giftDescription,
         pointCost: pointsNum,
         giftCode: gifteeCode,
         imageUrl: giftImageUrl,
@@ -326,6 +329,22 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
               <h3 className={styles.sectionTitle}>{isEditingGift ? "✏️ 自社ギフト編集" : "🎁 自社ギフト登録"}</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="md:col-span-2"><label className={styles.label}>ギフト名</label><input value={newGiftName} onChange={e=>setNewGiftName(e.target.value)} className={styles.input} /></div>
+                
+                <div className="md:col-span-2">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className={styles.label}>ギフト説明文</label>
+                    <span className={`text-[10px] font-black ${giftDescription.length > 400 ? 'text-red-500' : 'text-slate-400'}`}>
+                      {giftDescription.length} / 400
+                    </span>
+                  </div>
+                  <textarea 
+                    value={giftDescription} 
+                    onChange={e=>setGiftDescription(e.target.value)} 
+                    className={`${styles.input} min-h-[100px] py-4 resize-none`}
+                    placeholder="ギフトの詳細情報を入力してください（最大400文字）"
+                  />
+                </div>
+
                 <div><label className={styles.label}>ポイント</label><input type="number" value={giftPoints} onInput={(e: any) => setGiftPoints(e.target.value)} className={styles.input} /></div>
                 <div><label className={styles.label}>在庫</label><input type="number" value={giftStock} onInput={(e: any) => setGiftStock(e.target.value)} className={styles.input} /></div>
                 <div className="md:col-span-2">
@@ -344,7 +363,7 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
                 </div>
               </div>
               <div className="flex gap-3">
-                <button onClick={handleGiftSubmit} disabled={isProcessing} className="flex-1 py-4 bg-orange-500 text-white font-black rounded-2xl shadow-lg hover:bg-slate-900 transition-all">{isEditingGift ? "保存" : "登録"}</button>
+                <button onClick={handleGiftSubmit} disabled={isProcessing || giftDescription.length > 400} className="flex-1 py-4 bg-orange-500 text-white font-black rounded-2xl shadow-lg hover:bg-slate-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed">{isEditingGift ? "保存" : "登録"}</button>
                 {isEditingGift && <button onClick={resetGiftForm} className="px-8 py-4 bg-slate-100 rounded-2xl font-black text-slate-400">キャンセル</button>}
               </div>
             </section>
@@ -391,6 +410,22 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
                   <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">ギフト名称</label>
                   <input value={newGiftName} onChange={e=>setNewGiftName(e.target.value)} className="w-full bg-white/10 border-2 border-white/5 rounded-2xl px-6 py-4 text-white outline-none focus:border-orange-500 transition-all" />
                 </div>
+
+                <div className="md:col-span-2">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase block">ギフト説明文</label>
+                    <span className={`text-[10px] font-black ${giftDescription.length > 400 ? 'text-red-500' : 'text-slate-500'}`}>
+                      {giftDescription.length} / 400
+                    </span>
+                  </div>
+                  <textarea 
+                    value={giftDescription} 
+                    onChange={e=>setGiftDescription(e.target.value)} 
+                    className="w-full bg-white/10 border-2 border-white/5 rounded-2xl px-6 py-4 text-white outline-none focus:border-orange-500 transition-all min-h-[100px] resize-none"
+                    placeholder="ギフトの詳細情報を入力してください"
+                  />
+                </div>
+
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">交換ポイント数</label>
                   <input type="number" value={giftPoints} onChange={e=>setGiftPoints(e.target.value)} className="w-full bg-white/10 border-2 border-white/5 rounded-2xl px-6 py-4 text-white outline-none focus:border-orange-500 transition-all" />
@@ -413,7 +448,7 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
                 </div>
               </div>
               <div className="flex gap-3">
-                <button onClick={handleGifteeSubmit} disabled={isProcessing} className="flex-1 py-4 bg-orange-500 text-white font-black rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all">{isEditingGift ? "更新保存" : "giftee登録"}</button>
+                <button onClick={handleGifteeSubmit} disabled={isProcessing || giftDescription.length > 400} className="flex-1 py-4 bg-orange-500 text-white font-black rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed">{isEditingGift ? "更新保存" : "giftee登録"}</button>
                 {isEditingGift && <button onClick={resetGiftForm} className="px-8 py-4 bg-white/10 rounded-2xl font-black text-white">キャンセル</button>}
               </div>
             </section>

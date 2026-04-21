@@ -38,6 +38,8 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [shippingInfo, setShippingInfo] = useState({ name: "", zip: "", address: "", tel: "" });
+  // 追加: 説明文表示用モーダルの状態
+  const [showDescriptionGift, setShowDescriptionGift] = useState<any>(null);
 
   const getSvcInfo = useCallback((serviceId: string) => {
     const svcMaster = services.find((s: any) => s.id === serviceId);
@@ -211,7 +213,7 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
             {gifts.map((gift) => (
-              <div key={gift.id} className="bg-white rounded-[2rem] border-2 border-slate-50 p-5 flex flex-col relative overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+              <div key={gift.id} className="bg-white rounded-[2rem] border-2 border-slate-50 p-5 flex flex-col relative overflow-hidden shadow-sm hover:shadow-md transition-shadow group">
                 <div className={`absolute top-4 right-4 z-20 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm ${gift._type === 'giftee' ? 'bg-slate-900 text-orange-400' : 'bg-orange-500 text-white'}`}>
                   {gift._type === 'giftee' ? (gift.type === 'giftee-box' ? '🎟️ GifteeBox' : '🎟️ GifteeCard') : '🎁 Original'}
                 </div>
@@ -220,8 +222,18 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
                     <span className="bg-red-500 text-white text-[10px] font-black px-4 py-1.5 rounded-full shadow-lg transform -rotate-12">OUT OF STOCK</span>
                   </div>
                 )}
-                <div className={`aspect-square w-full mb-5 rounded-[1.5rem] overflow-hidden border flex items-center justify-center transition-colors ${gift._type === 'giftee' ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-50'}`}>
+                <div className={`aspect-square w-full mb-5 rounded-[1.5rem] overflow-hidden border flex items-center justify-center transition-colors relative ${gift._type === 'giftee' ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-50'}`}>
                   {gift.imageUrl ? <GiftImage path={gift.imageUrl} /> : <span className="text-[32px]">{gift._type === 'giftee' ? '🎟️' : '🎁'}</span>}
+                  
+                  {/* 追加: 商品説明オーバーラップボタン */}
+                  <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/40 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                    <button 
+                      onClick={() => setShowDescriptionGift(gift)}
+                      className="bg-white text-slate-900 px-4 py-2 rounded-full text-[10px] font-black shadow-xl transform translate-y-4 group-hover:translate-y-0 transition-all hover:bg-orange-500 hover:text-white"
+                    >
+                      商品説明を見る
+                    </button>
+                  </div>
                 </div>
                 <h4 className="text-sm font-black text-slate-800 line-clamp-2 min-h-[2.5rem] leading-tight">{gift.name}</h4>
                 <div className="flex justify-between items-end mt-3">
@@ -241,6 +253,45 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
           </div>
         )}
       </div>
+
+      {/* 追加: 商品説明ポップアップモーダル */}
+      {showDescriptionGift && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md transition-all">
+          <div className="bg-white w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-200 relative overflow-hidden">
+            <button 
+              onClick={() => setShowDescriptionGift(null)}
+              className="absolute top-6 right-6 w-10 h-10 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:text-slate-900 transition-colors"
+            >
+              ✕
+            </button>
+            <div className="space-y-6">
+              <div className="flex items-center space-x-4">
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 overflow-hidden border ${showDescriptionGift._type === 'giftee' ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}>
+                  {showDescriptionGift.imageUrl ? <GiftImage path={showDescriptionGift.imageUrl} /> : <span className="text-2xl">{showDescriptionGift._type === 'giftee' ? '🎟️' : '🎁'}</span>}
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 leading-tight">{showDescriptionGift.name}</h3>
+                  <p className="text-orange-500 font-black text-sm mt-1">{showDescriptionGift.pointCost.toLocaleString()} pts</p>
+                </div>
+              </div>
+              <div className="bg-slate-50 rounded-3xl p-6">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Item Description</p>
+                <div className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap font-medium max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                  {showDescriptionGift.description || "商品説明はありません。"}
+                </div>
+              </div>
+              {/* 「このギフトを申し込む」から「閉じる」に変更 */}
+              <button 
+                onClick={() => setShowDescriptionGift(null)}
+                className="w-full py-4 rounded-2xl text-sm font-black transition-all bg-slate-100 text-slate-600 hover:bg-slate-200"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {selectedGift && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
           <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 my-auto space-y-6 animate-in zoom-in-95 duration-200 shadow-2xl">

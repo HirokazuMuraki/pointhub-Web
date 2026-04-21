@@ -66,6 +66,7 @@ const schema = a.schema({
   GifteeMaster: a.model({
     type: a.string().required(),
     name: a.string().required(),
+    description: a.string(), // 追加：ギフト詳細説明用（上限400文字想定）
     pointCost: a.integer().required(),
     giftCode: a.string().required(),
     imageUrl: a.string(),

@@ -82,9 +82,9 @@ export const AdminHistory = ({ client, styles }: any) => {
 
   const downloadCSV = () => {
     const now = new Date().toISOString().split('T')[0].replace(/-/g, '');
-    const headers = "お問い合わせ番号,ユーザー名,メールアドレス,日時,交換元,交換ポイント,交換元残高,交換先/商品名,交換先残高\n";
+    const headers = "お問い合わせ番号,ユーザー名,メールアドレス,日時,交換元,交換ポイント,交換元残高,交換先/商品名,交換先残高,受取URL\n";
     const rows = filtered.map(t => 
-      `${t.trackingNumber},${t.uName},${t.userEmail},${t.createdAt ? new Date(t.createdAt).toLocaleString() : ""},${t.rawSrc},${t.amount},${t.srcBalance},${t.rawDst},${t.dstBalance}`
+      `${t.trackingNumber},${t.uName},${t.userEmail},${t.createdAt ? new Date(t.createdAt).toLocaleString() : ""},${t.rawSrc},${t.amount},${t.srcBalance},${t.rawDst},${t.dstBalance},${t.gifteeUrl || ""}`
     ).join("\n");
     const blob = new Blob(["\uFEFF" + headers + rows], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
@@ -158,6 +158,21 @@ export const AdminHistory = ({ client, styles }: any) => {
                       <div className="bg-slate-100 px-3 py-1.5 rounded-lg text-[11px] font-bold text-slate-700 border border-slate-200">{t.displayFrom}</div>
                       <div className="text-orange-500 font-black text-lg leading-none py-0.5">↓</div>
                       <div className="bg-orange-50 px-3 py-1.5 rounded-lg text-[11px] font-bold text-slate-700 border border-orange-200">{t.displayTo}</div>
+                      
+                      {/* 管理者向けURL表示 */}
+                      {t.gifteeUrl && (
+                        <div className="mt-3 flex flex-col items-center">
+                          <div className="text-[9px] font-black text-orange-400 uppercase tracking-tighter mb-1">Giftee Receipt URL</div>
+                          <a 
+                            href={t.gifteeUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="text-[10px] text-blue-500 font-bold hover:underline break-all bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 max-w-xs"
+                          >
+                            {t.gifteeUrl}
+                          </a>
+                        </div>
+                      )}
                     </div>
                   </td>
                   <td className="p-6 text-right align-top">
