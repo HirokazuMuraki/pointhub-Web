@@ -40,6 +40,8 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
   const [shippingInfo, setShippingInfo] = useState({ name: "", zip: "", address: "", tel: "" });
   // 追加: 説明文表示用モーダルの状態
   const [showDescriptionGift, setShowDescriptionGift] = useState<any>(null);
+  // 追加: 成功時ポップアップの状態
+  const [showSuccessModal, setShowSuccessModal] = useState<any>(null);
 
   const getSvcInfo = useCallback((serviceId: string) => {
     const svcMaster = services.find((s: any) => s.id === serviceId);
@@ -186,7 +188,16 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
         gifteeUrl, gifteeOrderId, trackingNumber
       });
 
-      alert(`交換が完了しました！\nお問い合わせ番号: ${trackingNumber}`);
+      // 成功時情報をセットしてモーダルを表示
+      setShowSuccessModal({
+        trackingNumber,
+        giftName: latestGift.name,
+        serviceName: cred.serviceName,
+        pointCost: latestGift.pointCost,
+        balanceAfter,
+        gifteeUrl
+      });
+
       setSelectedGift(null);
       await Promise.all([fetchGifts(), fetchCredentials()]);
 
@@ -280,12 +291,61 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
                   {showDescriptionGift.description || "商品説明はありません。"}
                 </div>
               </div>
-              {/* 「このギフトを申し込む」から「閉じる」に変更 */}
               <button 
                 onClick={() => setShowDescriptionGift(null)}
                 className="w-full py-4 rounded-2xl text-sm font-black transition-all bg-slate-100 text-slate-600 hover:bg-slate-200"
               >
                 閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 追加: 完了報告ポップアップモーダル */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-300 relative">
+            <div className="text-center space-y-4">
+              <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-3xl">✓</div>
+              <h3 className="text-xl font-black text-slate-900">ギフト交換が完了しました。</h3>
+              
+              <div className="bg-slate-50 rounded-3xl p-6 text-left space-y-2 border border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2">■ お申し込み内容</p>
+                <div className="grid grid-cols-3 gap-y-2 text-[11px] font-bold">
+                  <div className="text-slate-400">・お問い合わせ番号</div>
+                  <div className="col-span-2 text-slate-800 tracking-wider">：{showSuccessModal.trackingNumber}</div>
+                  
+                  <div className="text-slate-400">・　　　交換ギフト</div>
+                  <div className="col-span-2 text-slate-800">：{showSuccessModal.giftName}</div>
+                  
+                  <div className="text-slate-400">・　交換元サービス</div>
+                  <div className="col-span-2 text-slate-800">：{showSuccessModal.serviceName}</div>
+                  
+                  <div className="text-slate-400">・　　消費ポイント</div>
+                  <div className="col-span-2 text-orange-500">：{showSuccessModal.pointCost.toLocaleString()} ポイント</div>
+                  
+                  <div className="text-slate-400">・　　交換後の残高</div>
+                  <div className="col-span-2 text-slate-800">：{showSuccessModal.balanceAfter.toLocaleString()} ポイント</div>
+                  
+                  {showSuccessModal.gifteeUrl && (
+                    <>
+                      <div className="text-slate-400">・ギフト受取URL</div>
+                      <div className="col-span-2">
+                        ：<a href={showSuccessModal.gifteeUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all">{showSuccessModal.gifteeUrl}</a>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+              
+              <p className="text-[10px] text-slate-400 font-bold">ギフト交換結果はメールでもご確認頂けます。</p>
+              
+              <button 
+                onClick={() => setShowSuccessModal(null)}
+                className="w-full py-4 rounded-2xl text-sm font-black transition-all bg-slate-900 text-white hover:bg-orange-500 shadow-lg active:scale-95"
+              >
+                確認しました
               </button>
             </div>
           </div>
