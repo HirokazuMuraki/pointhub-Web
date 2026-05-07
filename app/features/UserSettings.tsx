@@ -80,6 +80,23 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
 
   const handleSaveCredential = async () => {
     if (!targetLoginId || !targetPassword || (!isEditing && !selectedSvcId)) return alert("入力を確認してください");
+
+    // バリデーション: 同一サービス内でのログインID重複チェック
+    if (!isEditing) {
+      // 新規登録時
+      const isDuplicate = userCredentials.some(
+        (c) => c.serviceId === selectedSvcId && c.loginId === targetLoginId
+      );
+      if (isDuplicate) return alert("このIDは既に同じサービスで登録されています。");
+    } else {
+      // 編集時（自分自身以外のデータと比較）
+      const currentCred = userCredentials.find(c => c.id === isEditing);
+      const isDuplicate = userCredentials.some(
+        (c) => c.id !== isEditing && c.serviceId === currentCred?.serviceId && c.loginId === targetLoginId
+      );
+      if (isDuplicate) return alert("このIDは既に同じサービスで登録されています。");
+    }
+
     try {
       if (isEditing) {
         await client.models.UserServiceCredential.update({ id: isEditing, loginId: targetLoginId, password: targetPassword });

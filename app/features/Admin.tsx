@@ -152,6 +152,23 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
 
   const addService = async () => {
     if (!newServiceName) return alert("サービス名を入力してください");
+
+    // 重複チェック: connectionSettings内のshopIdが一致するか確認
+    const isDuplicate = services.some((s: any) => {
+      try {
+        const settings = JSON.parse(s.connectionSettings || "{}");
+        // 新規登録時は全件チェック、編集時は自分以外をチェック
+        const isSameShopId = settings.shopId === newShopId;
+        return viewingId ? (s.id !== viewingId && isSameShopId) : isSameShopId;
+      } catch (e) {
+        return false;
+      }
+    });
+
+    if (isDuplicate) {
+      return alert("このショップIDは既に登録されています。");
+    }
+
     setIsProcessing(true);
     try {
       const settings = JSON.stringify({ shopId: newShopId, authKey: newAuthKey });
