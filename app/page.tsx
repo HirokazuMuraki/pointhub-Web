@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Amplify } from "aws-amplify";
+import { I18n } from "aws-amplify/utils";
 import { sessionStorage } from "aws-amplify/utils";
 import { cognitoUserPoolsTokenProvider } from "aws-amplify/auth/cognito";
 import { generateClient } from "aws-amplify/data";
-import { Authenticator, useAuthenticator } from "@aws-amplify/ui-react";
+import { Authenticator, useAuthenticator, translations } from "@aws-amplify/ui-react";
 import { fetchAuthSession } from "aws-amplify/auth"; 
 import "@aws-amplify/ui-react/styles.css";
 import type { Schema } from "@/amplify/data/resource";
@@ -22,6 +23,23 @@ import { POLICIES } from "@/app/constants";
 Amplify.configure(outputs);
 cognitoUserPoolsTokenProvider.setKeyValueStorage(sessionStorage);
 const client = generateClient<Schema>();
+
+// 日本語化の設定
+I18n.putVocabularies(translations);
+I18n.setLanguage("ja");
+I18n.putVocabularies({
+  ja: {
+    "Sign In": "ログイン",
+    "Sign Up": "新規登録",
+    "Email": "メールアドレス",
+    "Password": "パスワード",
+    "Confirm Password": "パスワード（確認）",
+    "Forgot your password?": "パスワードをお忘れですか？",
+    "Create Account": "アカウントを作成",
+    "Enter your Email": "メールアドレスを入力",
+    "Enter your Password": "パスワードを入力",
+  },
+});
 
 function Dashboard({ user, signOut }: { user: any, signOut: any }) {
   const [services, setServices] = useState<any[]>([]);
@@ -45,13 +63,37 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
       if (groups?.includes("Admins")) setIsAdmin(true);
     });
     refreshServices();
-    client.models.UserProfile.list({ filter: { email: { eq: userEmail } } }).then(({ data }) => {
-      if (data.length > 0 && data[0].name) setDisplayName(data[0].name);
-      else setDisplayName(userEmail.split('@')[0]);
-    });
+
+    // プロフィール取得および初期登録ロジック
+    const syncProfile = async () => {
+      if (!userEmail) return;
+      
+      try {
+        const { data } = await client.models.UserProfile.list({ 
+          filter: { email: { eq: userEmail } } 
+        });
+
+        if (data.length > 0) {
+          // すでにデータがある場合
+          setDisplayName(data[0].name || userEmail.split('@')[0]);
+        } else {
+          // データがない場合（初回ログイン時）
+          const defaultName = userEmail.split('@')[0];
+          await client.models.UserProfile.create({
+            email: userEmail,
+            name: defaultName,
+          });
+          setDisplayName(defaultName);
+        }
+      } catch (err) {
+        console.error("Profile sync error:", err);
+        setDisplayName(userEmail.split('@')[0]);
+      }
+    };
+
+    syncProfile();
   }, [userEmail, refreshServices]);
 
-  // 3. 管理設定メニューのアイコンを ⚙️ に戻しました
   const menuItems = [
     { id: "exchange", label: "交換実行", icon: "🔄" },
     { id: "history", label: "履歴一覧", icon: "📋" },
@@ -87,7 +129,6 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
             <h1 className="text-3xl font-black italic text-slate-900 leading-none">POINT<span className="text-orange-500">HUB</span></h1>
           </div>
           
-          {/* 2. 「ようこそ」のあとに名前が表示される形式に復元 */}
           <div className="px-6 py-4 mt-4 lg:mt-0">
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 relative">
               <div className="flex justify-between items-start">
@@ -149,7 +190,6 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
   );
 }
 
-// 1. ランディングページのデザインを完全に復元
 function LandingPageSwitcher() {
   const { authStatus, user, signOut } = useAuthenticator((context) => [context.authStatus]);
   
@@ -192,7 +232,7 @@ function LandingPageSwitcher() {
               <h3 className="text-xl lg:text-2xl font-black tracking-tighter text-slate-900 uppercase italic">Member Login</h3>
               <div className="h-1 bg-orange-500 w-10 mx-auto mt-2 rounded-full"></div>
             </div>
-            <div className="w-full"><Authenticator /></div>
+            <div className="w-full"><Authenticator initialState="signIn" /></div>
           </div>
         </div>
       </section>

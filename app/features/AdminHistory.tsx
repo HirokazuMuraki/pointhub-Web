@@ -27,36 +27,43 @@ export const AdminHistory = ({ client, styles }: any) => {
           const c = creds.find((i: any) => i.userEmail === email && i.serviceName === svcName);
           return c ? c.dummyBalance : null;
         };
+
         const txData = (txRes.data || []).map((t: any) => {
           const latestToBal = getLatestBal(t.userEmail, t.toServiceName);
+          const srcBefore = (t.dummyBalance || 0) + t.amount;
+          const srcAfter = t.dummyBalance || 0;
+          const dstAfter = latestToBal !== null ? latestToBal : null;
+          const dstBefore = dstAfter !== null ? dstAfter - t.amount : null;
+
           return {
             ...t, 
             icon: "🪙",
             uName: nameMap.get(t.userEmail) || "不明",
             rawSrc: t.fromServiceName || "", 
             rawDst: t.toServiceName || "",
-            srcBalance: t.dummyBalance || 0,
-            dstBalance: latestToBal !== null ? latestToBal : "-",
-            displayFrom: `${t.fromServiceName} (残高:${(t.dummyBalance || 0).toLocaleString()}pts)`,
-            displayTo: `${t.toServiceName}${latestToBal !== null ? ` (残高:${latestToBal.toLocaleString()}pts)` : ""}`,
+            srcBefore, srcAfter,
+            dstBefore, dstAfter,
             trackingNumber: t.trackingNumber || ""
           };
         });
+
         const orderData = (orderRes.data || []).map((o: any) => {
+          const srcBefore = (o.dummyBalance || 0) + (o.pointSpent || 0);
+          const srcAfter = o.dummyBalance || 0;
+
           return {
             ...o, 
             icon: "🎁",
             uName: nameMap.get(o.userEmail) || o.shippingName || "不明",
             rawSrc: o.orderSourceName || "", 
             rawDst: o.giftName || "",
-            srcBalance: o.dummyBalance || 0,
-            dstBalance: "", 
-            displayFrom: `${o.orderSourceName || "ギフト元"} (残高:${(o.dummyBalance || 0).toLocaleString()}pts)`,
-            displayTo: o.giftName, 
+            srcBefore, srcAfter,
+            dstBefore: null, dstAfter: null,
             amount: o.pointSpent,
             trackingNumber: o.trackingNumber || ""
           };
         });
+
         setTransactions([...txData, ...orderData].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       } catch (err) { console.error(err); } finally { setLoading(false); }
     };
@@ -84,7 +91,7 @@ export const AdminHistory = ({ client, styles }: any) => {
     const now = new Date().toISOString().split('T')[0].replace(/-/g, '');
     const headers = "お問い合わせ番号,ユーザー名,メールアドレス,日時,交換元,交換ポイント,交換元残高,交換先/商品名,交換先残高,受取URL\n";
     const rows = filtered.map(t => 
-      `${t.trackingNumber},${t.uName},${t.userEmail},${t.createdAt ? new Date(t.createdAt).toLocaleString() : ""},${t.rawSrc},${t.amount},${t.srcBalance},${t.rawDst},${t.dstBalance},${t.gifteeUrl || ""}`
+      `${t.trackingNumber},${t.uName},${t.userEmail},${t.createdAt ? new Date(t.createdAt).toLocaleString() : ""},${t.rawSrc},${t.amount},${t.srcAfter},${t.rawDst},${t.dstAfter ?? ""},${t.gifteeUrl || ""}`
     ).join("\n");
     const blob = new Blob(["\uFEFF" + headers + rows], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
@@ -134,9 +141,9 @@ export const AdminHistory = ({ client, styles }: any) => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-[10px] font-black text-slate-500 uppercase border-b-2 border-slate-200">
-                <th className="p-6 w-[280px]">User / Contact</th>
-                <th className="p-6 text-center">Transaction Details</th>
-                <th className="p-6 text-right w-[200px]">Amount</th>
+                <th className="p-6 w-[280px]">利用者 / 日時</th>
+                <th className="p-6 text-center">交換の詳細</th>
+                <th className="p-6 text-right w-[200px]">獲得・使用ポイント</th>
               </tr>
             </thead>
             <tbody>
@@ -154,12 +161,27 @@ export const AdminHistory = ({ client, styles }: any) => {
                     )}
                   </td>
                   <td className="p-6 align-top text-center border-r border-slate-50">
-                    <div className="inline-flex flex-col items-center space-y-1">
-                      <div className="bg-slate-100 px-3 py-1.5 rounded-lg text-[11px] font-bold text-slate-700 border border-slate-200">{t.displayFrom}</div>
-                      <div className="text-orange-500 font-black text-lg leading-none py-0.5">↓</div>
-                      <div className="bg-orange-50 px-3 py-1.5 rounded-lg text-[11px] font-bold text-slate-700 border border-orange-200">{t.displayTo}</div>
+                    <div className="inline-flex flex-col items-center space-y-2 w-full max-w-md">
+                      {/* 交換元表示 */}
+                      <div className="bg-slate-100 px-4 py-2 rounded-xl text-[11px] font-bold text-slate-700 border border-slate-200 w-full text-center">
+                        <div className="mb-0.5">{t.rawSrc || "ギフト元"}</div>
+                        <div className="text-[10px] text-slate-400 font-black">
+                          {t.srcBefore.toLocaleString()}pts → {t.srcAfter.toLocaleString()}pts
+                        </div>
+                      </div>
+
+                      <div className="text-orange-500 font-black text-2xl leading-none py-1">↓</div>
                       
-                      {/* 管理者向けURL表示 */}
+                      {/* 交換先表示 */}
+                      <div className="bg-orange-50 px-4 py-2 rounded-xl text-[11px] font-bold text-slate-800 border border-orange-200 w-full text-center">
+                        <div className="mb-0.5">{t.rawDst}</div>
+                        {t.dstAfter !== null && (
+                          <div className="text-[10px] text-orange-400 font-black">
+                            {t.dstBefore?.toLocaleString()}pts → {t.dstAfter.toLocaleString()}pts
+                          </div>
+                        )}
+                      </div>
+                      
                       {t.gifteeUrl && (
                         <div className="mt-3 flex flex-col items-center">
                           <div className="text-[9px] font-black text-orange-400 uppercase tracking-tighter mb-1">Giftee Receipt URL</div>

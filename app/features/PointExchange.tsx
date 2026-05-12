@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 
 export const PointExchange = ({ client, userEmail, styles, services, setActiveTab, generateTrackingNumber }: any) => {
   const [credentials, setCredentials] = useState<any[]>([]);
@@ -8,6 +8,10 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
   const [toCredId, setToCredId] = useState("");
   const [amount, setAmount] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // カスタムドロップダウンの開閉状態
+  const [isOpenFrom, setIsOpenFrom] = useState(false);
+  const [isOpenTo, setIsOpenTo] = useState(false);
 
   const getSvcInfo = useCallback((serviceId: string) => {
     const svcMaster = services.find((s: any) => s.id === serviceId);
@@ -33,7 +37,6 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
           id: cred.id,
           dummyBalance: latestBalance
         });
-        console.log(`${cred.serviceName} 同期完了: ${latestBalance}pt`);
       }
     } catch (e) {
       console.error("同期失敗:", e);
@@ -60,7 +63,7 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
     const val = parseInt(amount);
 
     if (!val || val < 1 || !fromCred || !toCred) {
-      return alert("交換ポイント数は1ポイント以上で入力してください");
+      return alert("サービスを選択し、交換ポイント数を1以上で入力してください");
     }
     
     if ((fromCred.dummyBalance || 0) < val) {
@@ -71,9 +74,7 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
     setIsProcessing(true);
 
     try {
-      // 親から渡された関数で一意の番号を生成
       const trackingNumber = generateTrackingNumber ? generateTrackingNumber() : `TX-${Date.now()}`;
-
       const fromBalanceAfter = (fromCred.dummyBalance || 0) - val;
       const toBalanceAfter = (toCred.dummyBalance || 0) + val;
 
@@ -90,7 +91,7 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
             shopId: info?.shopId,
             authKey: info?.masterAuthKey || t.cred.password,
             amount: t.op,
-            note: `PH-Exchange:${trackingNumber}` // 外部サービスのメモにも番号を付与
+            note: `PH-Exchange:${trackingNumber}`
           });
         }
         await client.models.UserServiceCredential.update({
@@ -99,7 +100,6 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
         });
       }
 
-      // 履歴を作成（問い合わせ番号を保存）
       await client.models.ExchangeTransaction.create({
         userEmail, 
         fromServiceName: fromCred.serviceName, 
@@ -107,7 +107,7 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
         amount: val, 
         dummyBalance: fromBalanceAfter,
         status: "COMPLETED",
-        trackingNumber // ← ここに生成した番号をセット
+        trackingNumber
       });
 
       alert(`交換完了！\nお問い合わせ番号: ${trackingNumber}`);
@@ -120,28 +120,81 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
     }
   };
 
+  // カスタムセレクトコンポーネント
+  const CustomSelect = ({ value, onChange, placeholder, options, isOpen, setIsOpen, disabledId }: any) => {
+    const selected = options.find((o: any) => o.id === value);
+    return (
+      <div className="relative">
+        <div 
+          onClick={() => setIsOpen(!isOpen)}
+          className={`${styles.input} flex flex-col justify-center min-h-[60px] cursor-pointer bg-white relative pr-10`}
+        >
+          {selected ? (
+            <>
+              <div className="text-[11px] font-black text-slate-800">{selected.serviceName}</div>
+              <div className="text-[10px] font-bold text-orange-500">{(selected.dummyBalance ?? 0).toLocaleString()} pts</div>
+            </>
+          ) : (
+            <span className="text-slate-400 text-xs">{placeholder}</span>
+          )}
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">▼</div>
+        </div>
+
+        {isOpen && (
+          <div className="absolute z-50 w-full mt-2 bg-white border-2 border-slate-100 rounded-2xl shadow-xl max-h-60 overflow-y-auto">
+            {options.map((c: any) => (
+              <div 
+                key={c.id}
+                onClick={() => {
+                  if (c.id !== disabledId) {
+                    onChange(c.id);
+                    setIsOpen(false);
+                  }
+                }}
+                className={`p-4 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${c.id === disabledId ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'}`}
+              >
+                <div className="text-[11px] font-black text-slate-700">{c.serviceName}</div>
+                <div className="text-[10px] font-bold text-slate-400">{(c.dummyBalance ?? 0).toLocaleString()} pts</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="p-6 lg:p-8 max-w-2xl mx-auto">
       <h3 className={`${styles.sectionTitle} mb-4`}>🔄 ポイント交換実行</h3>
       <div className="bg-slate-50 p-6 lg:p-8 rounded-[2.5rem] border-2 border-slate-100 space-y-4 shadow-inner">
+        
+        {/* 交換元 */}
         <div>
           <label className={styles.label}>交換元 (FROM)</label>
-          <select value={fromCredId} onChange={(e) => setFromCredId(e.target.value)} className={styles.input}>
-            <option value="">サービスを選択</option>
-            {credentials.map(c => (
-              <option key={c.id} value={c.id}>{c.serviceName} ({c.dummyBalance ?? '---'} pt)</option>
-            ))}
-          </select>
+          <CustomSelect 
+            value={fromCredId}
+            onChange={setFromCredId}
+            placeholder="サービスを選択"
+            options={credentials}
+            isOpen={isOpenFrom}
+            setIsOpen={(val: boolean) => { setIsOpenFrom(val); setIsOpenTo(false); }}
+          />
         </div>
+
+        {/* 交換先 */}
         <div>
           <label className={styles.label}>交換先 (TO)</label>
-          <select value={toCredId} onChange={(e) => setToCredId(e.target.value)} className={styles.input}>
-            <option value="">サービスを選択</option>
-            {credentials.map(c => (
-              <option key={c.id} value={c.id} disabled={c.id === fromCredId}>{c.serviceName} ({c.dummyBalance ?? '---'} pt)</option>
-            ))}
-          </select>
+          <CustomSelect 
+            value={toCredId}
+            onChange={setToCredId}
+            placeholder="サービスを選択"
+            options={credentials}
+            isOpen={isOpenTo}
+            setIsOpen={(val: boolean) => { setIsOpenTo(val); setIsOpenFrom(false); }}
+            disabledId={fromCredId}
+          />
         </div>
+
         <div className="pt-2 border-t">
           <label className={styles.label}>交換数</label>
           <input 
@@ -153,6 +206,7 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
             placeholder="1以上の数値を入力"
           />
         </div>
+
         <button 
           onClick={handleExchange} 
           disabled={isProcessing} 
