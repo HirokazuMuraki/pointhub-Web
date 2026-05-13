@@ -3,13 +3,13 @@ import { useState, useEffect } from "react";
 import { useAlert } from "./AlertProvider";
 
 export const UserProfile = ({ client, userEmail, styles }: any) => {
-  const showAlert = useAlert();
+  const { showAlert } = useAlert();
   const [profile, setProfile] = useState({ 
     id: "", 
     name: "", 
     email: userEmail || "", 
     phone: "",
-    zipCode: "", // resource.tsに合わせて大文字Cに変更
+    zipCode: "", 
     address: ""
   });
   const [loading, setLoading] = useState(true);
@@ -29,7 +29,7 @@ export const UserProfile = ({ client, userEmail, styles }: any) => {
           name: p.name || "",
           email: userEmail,
           phone: p.phoneNumber || "",
-          zipCode: p.zipCode || "", // resource.tsに合わせて大文字Cに変更
+          zipCode: p.zipCode || "", 
           address: p.address || ""
         });
       }
@@ -68,7 +68,7 @@ export const UserProfile = ({ client, userEmail, styles }: any) => {
         email: userEmail,
         name: profile.name,
         phoneNumber: profile.phone,
-        zipCode: profile.zipCode, // ここを zipCode に修正
+        zipCode: profile.zipCode,
         address: profile.address,
         role: "user"
       };
@@ -81,7 +81,7 @@ export const UserProfile = ({ client, userEmail, styles }: any) => {
       }
       
       await showAlert("プロフィールを保存しました");
-      await fetchProfile(); // 最新データを再取得
+      await fetchProfile(); 
     } catch (err) {
       console.error("Save error:", err);
       await showAlert("保存に失敗しました。");
