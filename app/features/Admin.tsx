@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { AdminHistory } from "./AdminHistory";
 import { uploadData, getUrl } from "aws-amplify/storage";
+import { useAlert } from "./AlertProvider";
 
 // 画像をパスからURLに変換するコンポーネント
 const GiftImage = ({ path }: { path: string }) => {
@@ -23,6 +24,7 @@ const GiftImage = ({ path }: { path: string }) => {
 };
 
 export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) => {
+  const { showAlert, showConfirm } = useAlert();
   const [activeAdminTab, setActiveAdminTab] = useState("services");
   const [isProcessing, setIsProcessing] = useState(false);
   const [allProfiles, setAllProfiles] = useState<any[]>([]);
@@ -106,26 +108,25 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
       });
       await uploadOperation.result;
       
-      // URLではなく「パス（キー）」をステートに入れる
       setGiftImageUrl(fullPath);
-      alert("画像を仮保存しました。登録ボタンを押すと確定します。");
+      await showAlert("画像を仮保存しました。登録ボタンを押すと確定します。");
       
     } catch (err: any) {
       console.error("アップロード詳細エラー:", err);
-      alert(`アップロード失敗: ${err.message || "権限エラー"}`);
+      await showAlert(`アップロード失敗: ${err.message || "権限エラー"}`);
     } finally {
       setIsProcessing(false);
     }
   };
 
   const shipOrder = async (order: any) => {
-    if (!confirm(`${order.giftName} の配送を完了としてマークしますか？\n配送先: ${order.shippingName} 様`)) return;
+    const ok = await showConfirm(`${order.giftName} の配送を完了としてマークしますか？\n配送先: ${order.shippingName} 様`);
+    if (!ok) return;
+
     setIsProcessing(true);
     try {
-      // 1. ステータス更新
       await client.models.GiftOrder.update({ id: order.id, status: "SHIPPED" });
       
-      // 2. 発送完了メール送信 (お届け先情報を追加)
       try {
         await client.mutations.sendShipmentNotification({
           userEmail: order.userEmail,
@@ -137,27 +138,24 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
         });
       } catch (mailErr) {
         console.error("メール送信失敗（管理用）:", mailErr);
-        // メール送信に失敗しても、ステータス更新は完了しているので警告のみ
-        alert("配送ステータスは更新されましたが、通知メールの送信に失敗しました。");
+        await showAlert("配送ステータスは更新されましたが、通知メールの送信に失敗しました。");
       }
 
-      alert(`配送完了として記録し、メールを送信しました。`);
+      await showAlert(`配送完了として記録し、メールを送信しました。`);
       fetchOrders();
     } catch (err: any) {
-      alert("エラー: " + err.message);
+      await showAlert("エラー: " + err.message);
     } finally {
       setIsProcessing(false);
     }
   };
 
   const addService = async () => {
-    if (!newServiceName) return alert("サービス名を入力してください");
+    if (!newServiceName) return await showAlert("サービス名を入力してください");
 
-    // 重複チェック: connectionSettings内のshopIdが一致するか確認
     const isDuplicate = services.some((s: any) => {
       try {
         const settings = JSON.parse(s.connectionSettings || "{}");
-        // 新規登録時は全件チェック、編集時は自分以外をチェック
         const isSameShopId = settings.shopId === newShopId;
         return viewingId ? (s.id !== viewingId && isSameShopId) : isSameShopId;
       } catch (e) {
@@ -166,7 +164,7 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
     });
 
     if (isDuplicate) {
-      return alert("このショップIDは既に登録されています。");
+      return await showAlert("このショップIDは既に登録されています。");
     }
 
     setIsProcessing(true);
@@ -184,16 +182,16 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
 
       if (viewingId) {
         await client.models.ServiceMaster.update({ id: viewingId, ...payload });
-        alert("サービス情報を更新しました");
+        await showAlert("サービス情報を更新しました");
       } else {
         await client.models.ServiceMaster.create(payload);
-        alert("新規サービスを登録しました");
+        await showAlert("新規サービスを登録しました");
       }
 
       resetServiceForm();
       if (onRefresh) await onRefresh();
     } catch (err) { 
-      alert("処理に失敗しました"); 
+      await showAlert("処理に失敗しました"); 
     } finally { 
       setIsProcessing(false); 
     }
@@ -205,11 +203,12 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
   };
 
   const handleGiftSubmit = async () => {
-    if (!newGiftName) return alert("ギフト名を入力してください");
-    if (giftDescription.length > 400) return alert("説明文は400文字以内で入力してください");
+    if (!newGiftName) return await showAlert("ギフト名を入力してください");
+    if (giftDescription.length > 400) return await showAlert("説明文は400文字以内で入力してください");
     const pointsNum = parseInt(giftPoints, 10);
     const stockNum = parseInt(giftStock, 10);
-    if (isNaN(pointsNum) || pointsNum < 1) return alert("必要ポイント数は1以上で入力してください");
+    if (isNaN(pointsNum) || pointsNum < 1) return await showAlert("必要ポイント数は1以上で入力してください");
+    
     setIsProcessing(true);
     try {
       const payload = { name: newGiftName, description: giftDescription, pointCost: pointsNum, stock: stockNum, imageUrl: giftImageUrl, isActive: true };
@@ -217,15 +216,16 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
       else await client.models.GiftMaster.create(payload);
       resetGiftForm();
       await fetchGifts();
-      alert("完了しました");
-    } catch (err) { alert("失敗しました"); } finally { setIsProcessing(false); }
+      await showAlert("完了しました");
+    } catch (err) { await showAlert("失敗しました"); } finally { setIsProcessing(false); }
   };
 
   const handleGifteeSubmit = async () => {
-    if (!newGiftName) return alert("ギフト名称を入力してください");
-    if (!gifteeCode) return alert("ギフトコードを入力してください");
-    if (giftDescription.length > 400) return alert("説明文は400文字以内で入力してください");
+    if (!newGiftName) return await showAlert("ギフト名称を入力してください");
+    if (!gifteeCode) return await showAlert("ギフトコードを入力してください");
+    if (giftDescription.length > 400) return await showAlert("説明文は400文字以内で入力してください");
     const pointsNum = parseInt(giftPoints, 10);
+    
     setIsProcessing(true);
     try {
       const payload = {
@@ -241,8 +241,8 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
       else await client.models.GifteeMaster.create(payload);
       resetGiftForm();
       await fetchGifteeItems();
-      alert("gifteeアイテムを保存しました");
-    } catch (err) { alert("失敗しました"); } finally { setIsProcessing(false); }
+      await showAlert("gifteeアイテムを保存しました");
+    } catch (err) { await showAlert("失敗しました"); } finally { setIsProcessing(false); }
   };
 
   const resetGiftForm = () => {
@@ -277,13 +277,15 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
   };
 
   const deleteService = async (id: string) => {
-    if (!confirm("削除しますか？")) return;
+    const ok = await showConfirm("削除しますか？");
+    if (!ok) return;
     await client.models.ServiceMaster.delete({ id });
     if (onRefresh) onRefresh();
   };
 
   const deleteItem = async (id: string, modelName: "GiftMaster" | "GifteeMaster") => {
-    if (!confirm("削除しますか？")) return;
+    const ok = await showConfirm("削除しますか？");
+    if (!ok) return;
     await (client.models as any)[modelName].update({ id, isActive: false });
     modelName === "GiftMaster" ? fetchGifts() : fetchGifteeItems();
   };
@@ -311,7 +313,6 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
         {activeAdminTab === "services" && (
           <div className="space-y-12">
-            {/* サービス登録・編集セクション */}
             <section className="bg-slate-50 p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-inner space-y-6">
               <h3 className={styles.sectionTitle}>{viewingId ? "🔍 サービス詳細・編集" : "🪙 ポイント交換マスター登録"}</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -346,7 +347,6 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
               <h3 className={styles.sectionTitle}>{isEditingGift ? "✏️ 自社ギフト編集" : "🎁 自社ギフト登録"}</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="md:col-span-2"><label className={styles.label}>ギフト名</label><input value={newGiftName} onChange={e=>setNewGiftName(e.target.value)} className={styles.input} /></div>
-                
                 <div className="md:col-span-2">
                   <div className="flex justify-between items-center mb-2">
                     <label className={styles.label}>ギフト説明文</label>
@@ -361,7 +361,6 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
                     placeholder="ギフトの詳細情報を入力してください（最大400文字）"
                   />
                 </div>
-
                 <div><label className={styles.label}>ポイント</label><input type="number" value={giftPoints} onInput={(e: any) => setGiftPoints(e.target.value)} className={styles.input} /></div>
                 <div><label className={styles.label}>在庫</label><input type="number" value={giftStock} onInput={(e: any) => setGiftStock(e.target.value)} className={styles.input} /></div>
                 <div className="md:col-span-2">
@@ -404,7 +403,6 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
           </div>
         )}
 
-        {/* giftee管理 */}
         {activeAdminTab === "giftee" && (
           <div className="space-y-12">
             <section className="bg-slate-900 text-white p-8 rounded-[2.5rem] shadow-xl space-y-6">
@@ -427,7 +425,6 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
                   <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">ギフト名称</label>
                   <input value={newGiftName} onChange={e=>setNewGiftName(e.target.value)} className="w-full bg-white/10 border-2 border-white/5 rounded-2xl px-6 py-4 text-white outline-none focus:border-orange-500 transition-all" />
                 </div>
-
                 <div className="md:col-span-2">
                   <div className="flex justify-between items-center mb-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase block">ギフト説明文</label>
@@ -442,7 +439,6 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
                     placeholder="ギフトの詳細情報を入力してください"
                   />
                 </div>
-
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">交換ポイント数</label>
                   <input type="number" value={giftPoints} onChange={e=>setGiftPoints(e.target.value)} className="w-full bg-white/10 border-2 border-white/5 rounded-2xl px-6 py-4 text-white outline-none focus:border-orange-500 transition-all" />

@@ -1,4 +1,5 @@
 import React from "react";
+import { AlertProvider } from "../features/AlertProvider";
 
 export const Sidebar = ({ activeTab, setActiveTab, name, email, signOut, isAdmin }: any) => {
   const menuItems = [
@@ -10,12 +11,10 @@ export const Sidebar = ({ activeTab, setActiveTab, name, email, signOut, isAdmin
 
   return (
     <aside className="hidden md:flex flex-col w-72 bg-white border-r border-slate-100 h-screen sticky top-0 overflow-hidden">
-      {/* 1. ロゴエリア */}
       <div className="p-8 pb-4">
         <h1 className="text-3xl font-black text-blue-600 italic tracking-tighter">POINT HUB</h1>
       </div>
 
-      {/* 2. ユーザー情報エリア（右側にログアウトを配置） */}
       <div className="px-8 pb-6 mb-4 border-b border-slate-50">
         <div className="flex justify-between items-start">
           <div>
@@ -36,7 +35,6 @@ export const Sidebar = ({ activeTab, setActiveTab, name, email, signOut, isAdmin
         <p className="text-[10px] text-slate-400 truncate font-medium mt-1">{email}</p>
       </div>
 
-      {/* 3. スクロール可能なメニューエリア */}
       <div className="flex-grow overflow-y-auto px-4 space-y-2 pb-4 scrollbar-hide">
         {menuItems.map((item) => (
           <button
@@ -63,8 +61,6 @@ export const Sidebar = ({ activeTab, setActiveTab, name, email, signOut, isAdmin
           </button>
         )}
       </div>
-
-      {/* 下部のログアウトボタンは削除しました */}
     </aside>
   );
 };
@@ -112,3 +108,10 @@ export const MobileNav = ({ activeTab, setActiveTab, isAdmin }: any) => {
     </nav>
   );
 };
+
+// 全体をラップするためのコンポーネントを追加
+export const AppLayoutWrapper = ({ children }: { children: React.ReactNode }) => (
+  <AlertProvider>
+    {children}
+  </AlertProvider>
+);

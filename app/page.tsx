@@ -17,7 +17,7 @@ import { UserSettings } from "./features/UserSettings";
 import { AdminPanel } from "./features/Admin";
 import { HistoryList } from "./features/History";
 import { UserProfile } from "./features/UserProfile";
-import { Footer } from "@/app/components/Layout";
+import { Footer, AppLayoutWrapper } from "@/app/components/Layout";
 import { POLICIES } from "@/app/constants";
 
 Amplify.configure(outputs);
@@ -64,20 +64,15 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
     });
     refreshServices();
 
-    // プロフィール取得および初期登録ロジック
     const syncProfile = async () => {
       if (!userEmail) return;
-      
       try {
         const { data } = await client.models.UserProfile.list({ 
           filter: { email: { eq: userEmail } } 
         });
-
         if (data.length > 0) {
-          // すでにデータがある場合
           setDisplayName(data[0].name || userEmail.split('@')[0]);
         } else {
-          // データがない場合（初回ログイン時）
           const defaultName = userEmail.split('@')[0];
           await client.models.UserProfile.create({
             email: userEmail,
@@ -90,7 +85,6 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
         setDisplayName(userEmail.split('@')[0]);
       }
     };
-
     syncProfile();
   }, [userEmail, refreshServices]);
 
@@ -115,84 +109,83 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
   };
 
   return (
-    <div className="h-screen bg-[#F8FAFC] flex flex-col lg:flex-row overflow-hidden w-full">
-      <header className="lg:hidden flex items-center justify-between bg-white px-6 py-4 border-b border-slate-100 sticky top-0 z-30 shrink-0">
-        <h1 className="text-xl font-black italic text-slate-900">POINT<span className="text-orange-500">HUB</span></h1>
-        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-slate-900 text-2xl font-bold">{isSidebarOpen ? "✕" : "☰"}</button>
-      </header>
+    <AppLayoutWrapper>
+      <div className="h-screen bg-[#F8FAFC] flex flex-col lg:flex-row overflow-hidden w-full">
+        <header className="lg:hidden flex items-center justify-between bg-white px-6 py-4 border-b border-slate-100 sticky top-0 z-30 shrink-0">
+          <h1 className="text-xl font-black italic text-slate-900">POINT<span className="text-orange-500">HUB</span></h1>
+          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-slate-900 text-2xl font-bold">{isSidebarOpen ? "✕" : "☰"}</button>
+        </header>
 
-      {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
+        {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white border-r border-slate-100 flex flex-col transform transition-transform duration-300 lg:translate-x-0 lg:static lg:h-screen shrink-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
-        <div className="shrink-0">
-          <div className="p-8 pb-2 hidden lg:block">
-            <h1 className="text-3xl font-black italic text-slate-900 leading-none">POINT<span className="text-orange-500">HUB</span></h1>
-          </div>
-          
-          <div className="px-6 py-4 mt-4 lg:mt-0">
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 relative">
-              <div className="flex justify-between items-start">
-                <div className="flex-1 overflow-hidden">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-tight">ようこそ</p>
-                  <p className="text-sm font-black text-slate-900 truncate mt-0.5">{displayName} 様</p>
+        <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white border-r border-slate-100 flex flex-col transform transition-transform duration-300 lg:translate-x-0 lg:static lg:h-screen shrink-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+          <div className="shrink-0">
+            <div className="p-8 pb-2 hidden lg:block">
+              <h1 className="text-3xl font-black italic text-slate-900 leading-none">POINT<span className="text-orange-500">HUB</span></h1>
+            </div>
+            <div className="px-6 py-4 mt-4 lg:mt-0">
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 relative">
+                <div className="flex justify-between items-start">
+                  <div className="flex-1 overflow-hidden">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-tight">ようこそ</p>
+                    <p className="text-sm font-black text-slate-900 truncate mt-0.5">{displayName} 様</p>
+                  </div>
+                  <button onClick={signOut} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all border border-transparent hover:border-red-100 flex items-center gap-1 shrink-0 ml-2" title="ログアウト">
+                    <span className="text-sm">🚪</span>
+                    <span className="text-[10px] font-black whitespace-nowrap">ログアウト</span>
+                  </button>
                 </div>
-                <button onClick={signOut} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all border border-transparent hover:border-red-100 flex items-center gap-1 shrink-0 ml-2" title="ログアウト">
-                  <span className="text-sm">🚪</span>
-                  <span className="text-[10px] font-black whitespace-nowrap">ログアウト</span>
-                </button>
+                {isAdmin && <span className="text-[8px] font-black text-orange-600 bg-orange-100/50 px-1.5 py-0.5 rounded uppercase mt-1 inline-block">Admin Access</span>}
               </div>
-              {isAdmin && <span className="text-[8px] font-black text-orange-600 bg-orange-100/50 px-1.5 py-0.5 rounded uppercase mt-1 inline-block">Admin Access</span>}
             </div>
           </div>
-        </div>
 
-        <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto scrollbar-hide">
-          {menuItems.map(item => (
-            <button key={item.id} onClick={() => { setActiveTab(item.id); setIsSidebarOpen(false); }} 
-              className={`w-full flex items-center space-x-3 px-4 py-4 rounded-2xl font-black transition-all ${activeTab === item.id ? "bg-slate-900 text-white shadow-lg" : "text-slate-400 hover:bg-slate-50"}`}>
-              <span className="text-xl">{item.icon}</span>
-              <span className="text-sm">{item.label}</span>
-            </button>
-          ))}
-        </nav>
-      </aside>
+          <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto scrollbar-hide">
+            {menuItems.map(item => (
+              <button key={item.id} onClick={() => { setActiveTab(item.id); setIsSidebarOpen(false); }} 
+                className={`w-full flex items-center space-x-3 px-4 py-4 rounded-2xl font-black transition-all ${activeTab === item.id ? "bg-slate-900 text-white shadow-lg" : "text-slate-400 hover:bg-slate-50"}`}>
+                <span className="text-xl">{item.icon}</span>
+                <span className="text-sm">{item.label}</span>
+              </button>
+            ))}
+          </nav>
+        </aside>
 
-      <main className="flex-1 h-screen overflow-y-auto p-6 lg:p-12 text-slate-900 scroll-smooth">
-        <div className="max-w-7xl mx-auto w-full min-h-full flex flex-col">
-          <div className="flex-grow">
-            <header className="mb-6 lg:mb-10">
-              <h2 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight lowercase italic">{menuItems.find(i => i.id === activeTab)?.label}</h2>
-              <div className="h-1.5 w-16 bg-orange-500 mt-4 rounded-full"></div>
-            </header>
-            
-            <div className="bg-white p-4 lg:p-10 rounded-[2rem] lg:rounded-[3rem] shadow-xl border border-slate-100 min-h-[500px] w-full mb-10">
-              {activeTab === "exchange" && <ExchangeWrapper client={client} userEmail={userEmail} styles={styles} services={services} setActiveTab={setActiveTab} />}
-              {activeTab === "history" && <HistoryList client={client} userEmail={userEmail} styles={styles} />}
-              {activeTab === "settings" && <UserSettings services={services} client={client} userEmail={userEmail} styles={styles} />}
-              {activeTab === "profile" && <UserProfile client={client} userEmail={userEmail} styles={styles} />}
-              {activeTab === "admin" && isAdmin && <AdminPanel client={client} styles={styles} services={services} onRefresh={refreshServices} />}
+        <main className="flex-1 h-screen overflow-y-auto p-6 lg:p-12 text-slate-900 scroll-smooth">
+          <div className="max-w-7xl mx-auto w-full min-h-full flex flex-col">
+            <div className="flex-grow">
+              <header className="mb-6 lg:mb-10">
+                <h2 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tight lowercase italic">{menuItems.find(i => i.id === activeTab)?.label}</h2>
+                <div className="h-1.5 w-16 bg-orange-500 mt-4 rounded-full"></div>
+              </header>
+              <div className="bg-white p-4 lg:p-10 rounded-[2rem] lg:rounded-[3rem] shadow-xl border border-slate-100 min-h-[500px] w-full mb-10">
+                {activeTab === "exchange" && <ExchangeWrapper client={client} userEmail={userEmail} styles={styles} services={services} setActiveTab={setActiveTab} />}
+                {activeTab === "history" && <HistoryList client={client} userEmail={userEmail} styles={styles} />}
+                {activeTab === "settings" && <UserSettings services={services} client={client} userEmail={userEmail} styles={styles} />}
+                {activeTab === "profile" && <UserProfile client={client} userEmail={userEmail} styles={styles} />}
+                {activeTab === "admin" && isAdmin && <AdminPanel client={client} styles={styles} services={services} onRefresh={refreshServices} />}
+              </div>
             </div>
+            <Footer setPolicyContent={(data: any) => handlePolicyClick(data.title)} />
           </div>
-          <Footer setPolicyContent={(data: any) => handlePolicyClick(data.title)} />
-        </div>
 
-        {policyContent && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-6" onClick={() => setPolicyContent(null)}>
-            <div className="bg-white rounded-[2rem] p-8 max-w-2xl w-full shadow-2xl relative text-slate-900" onClick={e => e.stopPropagation()}>
-              <button onClick={() => setPolicyContent(null)} className="absolute top-6 right-6 text-2xl hover:text-red-500 transition-colors">✕</button>
-              <h3 className="text-2xl font-black mb-4">{policyContent.title}</h3>
-              <div className="text-slate-600 font-bold leading-relaxed overflow-y-auto max-h-[60vh] pr-4 whitespace-pre-wrap">{policyContent.content}</div>
+          {policyContent && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-6" onClick={() => setPolicyContent(null)}>
+              <div className="bg-white rounded-[2rem] p-8 max-w-2xl w-full shadow-2xl relative text-slate-900" onClick={e => e.stopPropagation()}>
+                <button onClick={() => setPolicyContent(null)} className="absolute top-6 right-6 text-2xl hover:text-red-500 transition-colors">✕</button>
+                <h3 className="text-2xl font-black mb-4">{policyContent.title}</h3>
+                <div className="text-slate-600 font-bold leading-relaxed overflow-y-auto max-h-[60vh] pr-4 whitespace-pre-wrap">{policyContent.content}</div>
+              </div>
             </div>
-          </div>
-        )}
-      </main>
-    </div>
+          )}
+        </main>
+      </div>
+    </AppLayoutWrapper>
   );
 }
 
 function LandingPageSwitcher() {
   const { authStatus, user, signOut } = useAuthenticator((context) => [context.authStatus]);
-  
   if (authStatus === 'configuring') return <div className="min-h-screen flex items-center justify-center font-black italic text-slate-200 text-4xl">LOADING...</div>;
   if (authStatus === 'authenticated') return <Dashboard user={user} signOut={signOut} />;
 

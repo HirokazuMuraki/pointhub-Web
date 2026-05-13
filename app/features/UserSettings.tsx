@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useAlert } from "./AlertProvider";
 
 export const UserSettings = ({ services, client, userEmail, styles }: any) => {
+  const { showAlert, showConfirm } = useAlert();
   const [userCredentials, setUserCredentials] = useState<any[]>([]);
   const [fetchedPoints, setFetchedPoints] = useState<{ [key: string]: number | null }>({});
   const [isLoading, setIsLoading] = useState<{ [key: string]: boolean }>({});
@@ -49,14 +51,11 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
       });
       if (errors) throw new Error(errors[0].message);
 
-      // APIレスポンスのパースを確実に実行
       const res = typeof data === 'string' ? JSON.parse(data) : data;
       const latestBalance = res.point ?? res.points ?? 0;
 
-      // ① 画面表示(State)を更新
       setFetchedPoints(prev => ({ ...prev, [credential.id]: latestBalance }));
 
-      // ② ★DynamoDBを更新（これで300を本物に書き換える）
       await client.models.UserServiceCredential.update({
         id: credential.id,
         dummyBalance: latestBalance
@@ -64,37 +63,39 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
 
     } catch (err: any) {
       console.error(err);
-      alert(`照会失敗: ${err.message}`);
+      await showAlert(`照会失敗: ${err.message}`);
     } finally {
       setIsLoading(prev => ({ ...prev, [credential.id]: false }));
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("この連携を解除しますか？")) return;
+    const ok = await showConfirm("この連携を解除しますか？");
+    if (!ok) return;
     try {
       await client.models.UserServiceCredential.delete({ id });
-      alert("削除しました");
-    } catch (err) { alert("削除失敗"); }
+      await showAlert("削除しました");
+    } catch (err) { 
+      await showAlert("削除失敗"); 
+    }
   };
 
   const handleSaveCredential = async () => {
-    if (!targetLoginId || !targetPassword || (!isEditing && !selectedSvcId)) return alert("入力を確認してください");
+    if (!targetLoginId || !targetPassword || (!isEditing && !selectedSvcId)) {
+      return await showAlert("入力を確認してください");
+    }
 
-    // バリデーション: 同一サービス内でのログインID重複チェック
     if (!isEditing) {
-      // 新規登録時
       const isDuplicate = userCredentials.some(
         (c) => c.serviceId === selectedSvcId && c.loginId === targetLoginId
       );
-      if (isDuplicate) return alert("このIDは既に同じサービスで登録されています。");
+      if (isDuplicate) return await showAlert("このIDは既に同じサービスで登録されています。");
     } else {
-      // 編集時（自分自身以外のデータと比較）
       const currentCred = userCredentials.find(c => c.id === isEditing);
       const isDuplicate = userCredentials.some(
         (c) => c.id !== isEditing && c.serviceId === currentCred?.serviceId && c.loginId === targetLoginId
       );
-      if (isDuplicate) return alert("このIDは既に同じサービスで登録されています。");
+      if (isDuplicate) return await showAlert("このIDは既に同じサービスで登録されています。");
     }
 
     try {
@@ -108,7 +109,9 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
         });
       }
       resetForm();
-    } catch (err) { alert("保存失敗"); }
+    } catch (err) { 
+      await showAlert("保存失敗"); 
+    }
   };
 
   const resetForm = () => { setIsEditing(null); setSelectedSvcId(""); setTargetLoginId(""); setTargetPassword(""); };

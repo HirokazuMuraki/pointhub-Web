@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { PointExchange } from "./PointExchange";
 import { getUrl } from "aws-amplify/storage";
+import { useAlert } from "./AlertProvider";
 
 // 問い合わせ番号生成ユーティリティ
 const generateTrackingNumber = () => {
@@ -31,6 +32,7 @@ const GiftImage = ({ path }: { path: string }) => {
 };
 
 export const ExchangeWrapper = ({ client, userEmail, services, styles, setActiveTab }: any) => {
+  const { showAlert, showConfirm } = useAlert();
   const [exchangeTab, setExchangeTab] = useState("points");
   const [gifts, setGifts] = useState<any[]>([]);
   const [userCredentials, setUserCredentials] = useState<any[]>([]);
@@ -38,9 +40,7 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [shippingInfo, setShippingInfo] = useState({ name: "", zip: "", address: "", tel: "" });
-  // 追加: 説明文表示用モーダルの状態
   const [showDescriptionGift, setShowDescriptionGift] = useState<any>(null);
-  // 追加: 成功時ポップアップの状態
   const [showSuccessModal, setShowSuccessModal] = useState<any>(null);
 
   const getSvcInfo = useCallback((serviceId: string) => {
@@ -104,7 +104,9 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
     if (!selectedGift || !selectedServiceId || isProcessing) return;
     const cred = userCredentials.find((c:any) => c.id === selectedServiceId);
     if (!cred) return;
-    if (!confirm(`${selectedGift.name} と交換しますか？`)) return;
+
+    const ok = await showConfirm(`${selectedGift.name} と交換しますか？`);
+    if (!ok) return;
 
     setIsProcessing(true);
 
@@ -116,6 +118,8 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
       const trackingNumber = generateTrackingNumber();
       const balanceBefore = cred.dummyBalance || 0;
       const balanceAfter = balanceBefore - latestGift.pointCost;
+
+      if (balanceAfter < 0) throw new Error("ポイント残高が不足しています。");
 
       // 1. ポイント減算
       if (!cred.serviceName.includes("ダミー")) {
@@ -154,10 +158,8 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
           gifteeOrderId = gifteeResult.orderId || "";
         }
       } else {
-        // 自社ギフト
         await client.models.GiftMaster.update({ id: latestGift.id, stock: latestGift.stock - 1 });
         
-        // --- 修正箇所: JSONに郵便番号と電話番号を追加 ---
         await client.queries.sendEmail({
           to: userEmail,
           subject: "GIFT_ORDER",
@@ -188,7 +190,6 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
         gifteeUrl, gifteeOrderId, trackingNumber
       });
 
-      // 成功時情報をセットしてモーダルを表示
       setShowSuccessModal({
         trackingNumber,
         giftName: latestGift.name,
@@ -202,7 +203,7 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
       await Promise.all([fetchGifts(), fetchCredentials()]);
 
     } catch (err: any) {
-      alert(`交換エラー: ${err.message}`);
+      await showAlert(`交換エラー: ${err.message}`);
       fetchCredentials();
     } finally {
       setIsProcessing(false);
@@ -236,7 +237,6 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
                 <div className={`aspect-square w-full mb-5 rounded-[1.5rem] overflow-hidden border flex items-center justify-center transition-colors relative ${gift._type === 'giftee' ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-50'}`}>
                   {gift.imageUrl ? <GiftImage path={gift.imageUrl} /> : <span className="text-[32px]">{gift._type === 'giftee' ? '🎟️' : '🎁'}</span>}
                   
-                  {/* 追加: 商品説明オーバーラップボタン */}
                   <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/40 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
                     <button 
                       onClick={() => setShowDescriptionGift(gift)}
@@ -265,7 +265,6 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
         )}
       </div>
 
-      {/* 追加: 商品説明ポップアップモーダル */}
       {showDescriptionGift && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md transition-all">
           <div className="bg-white w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-200 relative overflow-hidden">
@@ -302,39 +301,49 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
         </div>
       )}
 
-      {/* 追加: 完了報告ポップアップモーダル */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
           <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-300 relative">
             <div className="text-center space-y-4">
               <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-3xl">✓</div>
-              <h3 className="text-xl font-black text-slate-900">ギフト交換が完了しました。</h3>
+              <h3 className="text-xl font-black text-slate-900 leading-tight">ギフト交換が完了しました。</h3>
               
-              <div className="bg-slate-50 rounded-3xl p-6 text-left space-y-2 border border-slate-100">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2">■ お申し込み内容</p>
-                <div className="grid grid-cols-3 gap-y-2 text-[11px] font-bold">
-                  <div className="text-slate-400">・お問い合わせ番号</div>
-                  <div className="col-span-2 text-slate-800 tracking-wider">：{showSuccessModal.trackingNumber}</div>
-                  
-                  <div className="text-slate-400">・　　　交換ギフト</div>
-                  <div className="col-span-2 text-slate-800">：{showSuccessModal.giftName}</div>
-                  
-                  <div className="text-slate-400">・　交換元サービス</div>
-                  <div className="col-span-2 text-slate-800">：{showSuccessModal.serviceName}</div>
-                  
-                  <div className="text-slate-400">・　　消費ポイント</div>
-                  <div className="col-span-2 text-orange-500">：{showSuccessModal.pointCost.toLocaleString()} ポイント</div>
-                  
-                  <div className="text-slate-400">・　　交換後の残高</div>
-                  <div className="col-span-2 text-slate-800">：{showSuccessModal.balanceAfter.toLocaleString()} ポイント</div>
-                  
+              <div className="bg-slate-50 rounded-3xl p-6 text-left space-y-4 border border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-2">■ お申し込み内容</p>
+                
+                <div className="space-y-4">
+                  <div className="flex flex-col space-y-1">
+                    <span className="text-[10px] text-slate-400 font-bold">・お問い合わせ番号</span>
+                    <span className="text-xs text-slate-800 font-black tracking-wider pl-2">{showSuccessModal.trackingNumber}</span>
+                  </div>
+
+                  <div className="flex flex-col space-y-1">
+                    <span className="text-[10px] text-slate-400 font-bold">・交換ギフト</span>
+                    <span className="text-xs text-slate-800 font-black pl-2">{showSuccessModal.giftName}</span>
+                  </div>
+
+                  <div className="flex flex-col space-y-1">
+                    <span className="text-[10px] text-slate-400 font-bold">・交換元サービス</span>
+                    <span className="text-xs text-slate-800 font-black pl-2">{showSuccessModal.serviceName}</span>
+                  </div>
+
+                  <div className="flex flex-col space-y-1">
+                    <span className="text-[10px] text-slate-400 font-bold">・消費ポイント</span>
+                    <span className="text-xs text-orange-500 font-black pl-2">{showSuccessModal.pointCost.toLocaleString()} ポイント</span>
+                  </div>
+
+                  <div className="flex flex-col space-y-1">
+                    <span className="text-[10px] text-slate-400 font-bold">・交換後の残高</span>
+                    <span className="text-xs text-slate-800 font-black pl-2">{showSuccessModal.balanceAfter.toLocaleString()} ポイント</span>
+                  </div>
+
                   {showSuccessModal.gifteeUrl && (
-                    <>
-                      <div className="text-slate-400">・ギフト受取URL</div>
-                      <div className="col-span-2">
-                        ：<a href={showSuccessModal.gifteeUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all">{showSuccessModal.gifteeUrl}</a>
-                      </div>
-                    </>
+                    <div className="flex flex-col space-y-1">
+                      <span className="text-[10px] text-slate-400 font-bold">・ギフト受取URL</span>
+                      <a href={showSuccessModal.gifteeUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 font-black hover:underline break-all pl-2">
+                        {showSuccessModal.gifteeUrl}
+                      </a>
+                    </div>
                   )}
                 </div>
               </div>

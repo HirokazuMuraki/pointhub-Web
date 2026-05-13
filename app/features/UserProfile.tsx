@@ -1,7 +1,9 @@
 "use client";
 import { useState, useEffect } from "react";
+import { useAlert } from "./AlertProvider";
 
 export const UserProfile = ({ client, userEmail, styles }: any) => {
+  const showAlert = useAlert();
   const [profile, setProfile] = useState({ 
     id: "", 
     name: "", 
@@ -78,11 +80,11 @@ export const UserProfile = ({ client, userEmail, styles }: any) => {
         if (newProfile) setProfile(prev => ({ ...prev, id: newProfile.id }));
       }
       
-      alert("プロフィールを保存しました");
+      await showAlert("プロフィールを保存しました");
       await fetchProfile(); // 最新データを再取得
     } catch (err) {
       console.error("Save error:", err);
-      alert("保存に失敗しました。");
+      await showAlert("保存に失敗しました。");
     } finally {
       setIsSaving(false);
     }

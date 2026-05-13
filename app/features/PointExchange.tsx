@@ -1,15 +1,18 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import { useAlert } from "./AlertProvider";
 
 export const PointExchange = ({ client, userEmail, styles, services, setActiveTab, generateTrackingNumber }: any) => {
+  // 分割代入で両方取得
+  const { showAlert, showConfirm } = useAlert();
+  
   const [credentials, setCredentials] = useState<any[]>([]);
   const [fromCredId, setFromCredId] = useState("");
   const [toCredId, setToCredId] = useState("");
   const [amount, setAmount] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // カスタムドロップダウンの開閉状態
   const [isOpenFrom, setIsOpenFrom] = useState(false);
   const [isOpenTo, setIsOpenTo] = useState(false);
 
@@ -63,14 +66,17 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
     const val = parseInt(amount);
 
     if (!val || val < 1 || !fromCred || !toCred) {
-      return alert("サービスを選択し、交換ポイント数を1以上で入力してください");
+      return await showAlert("サービスを選択し、交換ポイント数を1以上で入力してください");
     }
     
     if ((fromCred.dummyBalance || 0) < val) {
-      return alert(`残高不足です（現在: ${fromCred.dummyBalance || 0}pt）`);
+      return await showAlert(`残高不足です（現在: ${fromCred.dummyBalance || 0}pt）`);
     }
 
-    if (!confirm("交換を実行しますか？")) return;
+    // confirm を showConfirm に置換
+    const ok = await showConfirm("交換を実行しますか？");
+    if (!ok) return;
+
     setIsProcessing(true);
 
     try {
@@ -110,17 +116,16 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
         trackingNumber
       });
 
-      alert(`交換完了！\nお問い合わせ番号: ${trackingNumber}`);
+      await showAlert(`交換完了！\nお問い合わせ番号: ${trackingNumber}`);
       setAmount("");
       if (setActiveTab) setActiveTab("history");
     } catch (e: any) {
-      alert("エラー: " + e.message);
+      await showAlert("エラー: " + e.message);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // カスタムセレクトコンポーネント
   const CustomSelect = ({ value, onChange, placeholder, options, isOpen, setIsOpen, disabledId }: any) => {
     const selected = options.find((o: any) => o.id === value);
     return (
@@ -167,8 +172,6 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
     <div className="p-6 lg:p-8 max-w-2xl mx-auto">
       <h3 className={`${styles.sectionTitle} mb-4`}>🔄 ポイント交換実行</h3>
       <div className="bg-slate-50 p-6 lg:p-8 rounded-[2.5rem] border-2 border-slate-100 space-y-4 shadow-inner">
-        
-        {/* 交換元 */}
         <div>
           <label className={styles.label}>交換元 (FROM)</label>
           <CustomSelect 
@@ -181,7 +184,6 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
           />
         </div>
 
-        {/* 交換先 */}
         <div>
           <label className={styles.label}>交換先 (TO)</label>
           <CustomSelect 
@@ -210,7 +212,7 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
         <button 
           onClick={handleExchange} 
           disabled={isProcessing} 
-          className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl transition-all hover:bg-orange-500 disabled:bg-slate-200"
+          className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl transition-all hover:bg-orange-500 disabled:bg-slate-200 shadow-lg active:scale-95"
         >
           {isProcessing ? "実行中..." : "交換を実行する"}
         </button>
