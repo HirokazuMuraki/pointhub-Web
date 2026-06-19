@@ -7,6 +7,9 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
   const [loading, setLoading] = useState(true);
   const [showSearch, setShowSearch] = useState(false);
   
+  // ポップアップ（送付先）管理用の状態
+  const [selectedShipping, setSelectedShipping] = useState<any | null>(null);
+  
   const initialInput = { 
     dateFrom: "", dateTo: "", minAmt: "", maxAmt: "", srcName: "", dstName: "", trackingNumber: "" 
   };
@@ -166,6 +169,23 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
                   {t.trackingNumber && (
                     <div className="inline-block bg-slate-900 text-white text-[9px] font-black px-2 py-1 rounded tracking-wider shadow-sm">ID: {t.trackingNumber}</div>
                   )}
+                  {/* 自社ギフト(🎁)かつ、gifteeUrlが無い場合（実物配送ギフト）のみ送付先確認ボタンを表示 */}
+                  {t.icon === "🎁" && !t.gifteeUrl && (
+                    <div className="pt-0.5">
+                      <button
+                        onClick={() => setSelectedShipping({
+                          name: t.shippingName,
+                          zip: t.shippingZip,
+                          address: t.shippingAddress,
+                          tel: t.shippingTel,
+                          giftName: t.rawDst
+                        })}
+                        className="block text-[9px] font-black text-slate-500 bg-slate-100 hover:bg-orange-500 hover:text-white border border-slate-200 px-2 py-1 rounded transition-all shadow-sm"
+                      >
+                        📍 送付先確認
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="sm:col-span-6 flex flex-col items-start sm:items-center">
                   <div className="inline-flex flex-col items-center space-y-2 w-full max-w-md text-center">
@@ -207,6 +227,66 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
           ))}
         </div>
       </div>
+
+      {/* 送付先確認ポップアップ(モーダル) */}
+      {selectedShipping && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200"
+          onClick={() => setSelectedShipping(null)}
+        >
+          <div 
+            className="bg-white rounded-[2rem] border-2 border-slate-100 p-6 w-full max-w-md shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200 text-left"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[9px] font-black bg-orange-100 text-orange-600 px-2 py-0.5 rounded uppercase tracking-wider">自社ギフト配送先</span>
+                <h4 className="text-sm font-black text-slate-800 mt-1 truncate max-w-[280px]">{selectedShipping.giftName}</h4>
+              </div>
+              <button 
+                onClick={() => setSelectedShipping(null)}
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold bg-slate-50 hover:bg-slate-100 p-1.5 rounded-lg transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-3.5 py-1">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 block mb-0.5">お名前</label>
+                <div className="text-xs font-black text-slate-800 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/60">
+                  {selectedShipping.name || "---"} 様
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 block mb-0.5">郵便番号</label>
+                <div className="text-xs font-bold text-slate-800 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/60">
+                  {selectedShipping.zip ? `〒${selectedShipping.zip}` : "---"}
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 block mb-0.5">配送先住所</label>
+                <div className="text-xs font-bold text-slate-800 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/60 leading-relaxed break-all">
+                  {selectedShipping.address || "---"}
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 block mb-0.5">電話番号</label>
+                <div className="text-xs font-bold text-slate-800 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/60">
+                  {selectedShipping.tel || "---"}
+                </div>
+              </div>
+            </div>
+
+            <button 
+              onClick={() => setSelectedShipping(null)}
+              className="w-full py-3 bg-slate-900 text-white text-[11px] font-black rounded-xl hover:bg-orange-500 transition-all shadow-md"
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
