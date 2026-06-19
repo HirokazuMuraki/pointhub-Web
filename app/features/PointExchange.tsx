@@ -16,6 +16,9 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
   const [isOpenFrom, setIsOpenFrom] = useState(false);
   const [isOpenTo, setIsOpenTo] = useState(false);
 
+  // ポイント交換完了ポップアップ用の独自ステート
+  const [showSuccessModal, setShowSuccessModal] = useState<any>(null);
+
   const getSvcInfo = useCallback((serviceId: string) => {
     const svcMaster = services.find((s: any) => s.id === serviceId);
     if (!svcMaster) return null;
@@ -116,9 +119,9 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
         trackingNumber
       });
 
-      await showAlert(`交換完了！\nお問い合わせ番号: ${trackingNumber}`);
+      // 🔴 共通アラートを使わず、独自の完了モーダルをセット（「通知」やベルを表示させない仕様）
+      setShowSuccessModal({ trackingNumber });
       setAmount("");
-      if (setActiveTab) setActiveTab("history");
     } catch (e: any) {
       await showAlert("エラー: " + e.message);
     } finally {
@@ -217,6 +220,30 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
           {isProcessing ? "実行中..." : "交換を実行する"}
         </button>
       </div>
+
+      {/* 🔴 修正：通知文字のない、独自の交換完了ポップアップ */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-300 relative text-center space-y-5">
+            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-3xl">✓</div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-black text-slate-900 leading-tight">交換完了！</h3>
+              <p className="text-sm text-slate-500 font-bold">
+                お問い合わせ番号: <span className="font-black text-slate-800 tracking-wider">{showSuccessModal.trackingNumber}</span>
+              </p>
+            </div>
+            <button 
+              onClick={() => {
+                setShowSuccessModal(null);
+                if (setActiveTab) setActiveTab("history");
+              }}
+              className="w-full py-4 rounded-2xl text-sm font-black transition-all bg-slate-900 text-white hover:bg-orange-500 shadow-lg active:scale-95"
+            >
+              確認
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

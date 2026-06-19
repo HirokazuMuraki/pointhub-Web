@@ -38,6 +38,11 @@ I18n.putVocabularies({
     "Create Account": "アカウントを作成",
     "Enter your Email": "メールアドレスを入力",
     "Enter your Password": "パスワードを入力",
+    // パスワード注意書きの日本語化
+    "Password must have at least 8 characters": "パスワードは8文字以上である必要があります",
+    "Password must have upper case letters": "大文字を含める必要があります",
+    "Password must have numbers": "数字を含める必要があります",
+    "Password must have special characters": "記号を含める必要があります",
   },
 });
 
