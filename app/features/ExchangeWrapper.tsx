@@ -109,6 +109,7 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
     if (!ok) return;
 
     setIsProcessing(true);
+    let isPointDeducted = false; // ロールバック判定用フラグ
 
     try {
       const modelName = selectedGift._type === 'master' ? 'GiftMaster' : 'GifteeMaster';
@@ -133,6 +134,7 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
         });
         if (!opResult?.success) throw new Error(opResult?.message || "ポイント減算に失敗しました。");
       }
+      isPointDeducted = true;
 
       // 2. 残高更新
       await client.models.UserServiceCredential.update({ id: cred.id, dummyBalance: balanceAfter });
@@ -153,9 +155,14 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
           fromServiceName: cred.serviceName,
           balanceAfter: balanceAfter
         });
-        if (gifteeResult?.success) {
-          gifteeUrl = gifteeResult.url || "";
+        
+        // Lambdaからエラーが返った、または正常終了なのにURLが取得出来なかった場合は処理を中断して例外を投げる
+        if (gifteeResult?.success && gifteeResult.url) {
+          gifteeUrl = gifteeResult.url;
           gifteeOrderId = gifteeResult.orderId || "";
+        } else {
+          const errMsg = gifteeResult?.message || "デジタルギフト券面の発行に必要なURLの取得に失敗しました。";
+          throw new Error(errMsg);
         }
       } else {
         await client.models.GiftMaster.update({ id: latestGift.id, stock: latestGift.stock - 1 });
@@ -203,6 +210,35 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
       await Promise.all([fetchGifts(), fetchCredentials()]);
 
     } catch (err: any) {
+      // もしすでにポイントが減算された後にエラーが起きた場合、安全に元のポイントに払い戻し(相殺)を行う
+      if (isPointDeducted && cred && selectedGift) {
+        try {
+          // ローカルの残高表示を元の状態に戻す
+          const { data: currentCred } = await client.models.UserServiceCredential.get({ id: cred.id });
+          if (currentCred) {
+            const restoredBalance = (currentCred.dummyBalance || 0) + selectedGift.pointCost;
+            await client.models.UserServiceCredential.update({ id: cred.id, dummyBalance: restoredBalance });
+          }
+
+          // Shopserveの実ポイントを加算して相殺する
+          if (!cred.serviceName.includes("ダミー")) {
+            const info = getSvcInfo(cred.serviceId);
+            await client.mutations.operateShopservePoints({
+              accountId: cred.loginId,
+              shopId: info?.shopId,
+              authKey: info?.masterAuthKey || cred.password,
+              amount: selectedGift.pointCost, // プラス（加算）してロールバック
+              note: `Rollback-Gift-Error`
+            });
+          }
+        } catch (rollbackErr) {
+          console.error("ポイントの払い戻し（ロールバック）処理自体に失敗しました:", rollbackErr);
+        }
+      }
+
+      // 🔴 修正: エラー時に「交換内容の確認」ポップアップ（モーダル）を閉じる
+      setSelectedGift(null);
+
       await showAlert(`交換エラー: ${err.message}`);
       fetchCredentials();
     } finally {

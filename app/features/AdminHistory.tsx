@@ -63,7 +63,9 @@ export const AdminHistory = ({ client, styles }: any) => {
             srcBefore, srcAfter,
             dstBefore: null, dstAfter: null,
             amount: o.pointSpent,
-            trackingNumber: o.trackingNumber || ""
+            trackingNumber: o.trackingNumber || "",
+            gifteeUrl: o.gifteeUrl || "",
+            gifteeOrderId: o.gifteeOrderId || ""
           };
         });
 
@@ -126,7 +128,7 @@ export const AdminHistory = ({ client, styles }: any) => {
                 type={item.type} 
                 step={item.step} 
                 className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:border-orange-400 focus:bg-white transition-all font-bold text-slate-800" 
-                value={(input as any)[item.key]} 
+                value={(input as any)[input[item.key] as any]} 
                 onChange={e=>setInput({...input, [item.key]:e.target.value})} 
               />
             </div>
@@ -150,81 +152,89 @@ export const AdminHistory = ({ client, styles }: any) => {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((t: any) => (
-                <tr key={t.id} className="hover:bg-slate-50/80 transition-colors border-b-2 border-slate-100 last:border-0">
-                  <td className="p-6 align-top border-r border-slate-50">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-lg">{t.icon}</span>
-                      <div className="text-sm font-black text-slate-900 leading-tight">{t.uName}</div>
-                    </div>
-                    <div className="text-[11px] text-slate-700 font-bold mb-1">{t.userEmail}</div>
-                    <div className="text-[11px] text-slate-500 font-medium mb-3">{new Date(t.createdAt).toLocaleString('ja-JP')}</div>
-                    {t.trackingNumber && (
-                      <div className="inline-block bg-slate-900 text-white text-[9px] font-black px-2 py-1 rounded tracking-wider shadow-sm">ID: {t.trackingNumber}</div>
-                    )}
-                    {/* 自社ギフト(🎁)かつ、gifteeUrlが無い場合のみ送付先確認ボタンを表示 */}
-                    {t.icon === "🎁" && !t.gifteeUrl && (
-                      <div className="mt-2">
-                        <button
-                          onClick={() => setSelectedShipping({
-                            name: t.shippingName,
-                            zip: t.shippingZip,
-                            address: t.shippingAddress,
-                            tel: t.shippingTel,
-                            giftName: t.rawDst,
-                            uName: t.uName
-                          })}
-                          className="block text-[9px] font-black text-slate-500 bg-slate-100 hover:bg-orange-500 hover:text-white border border-slate-200 px-2 py-1 rounded transition-all shadow-sm"
-                        >
-                          📍 送付先確認
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                  <td className="p-6 align-top text-center border-r border-slate-50">
-                    <div className="inline-flex flex-col items-center space-y-2 w-full max-w-md">
-                      {/* 交換元表示 */}
-                      <div className="bg-slate-100 px-4 py-2 rounded-xl text-[11px] font-bold text-slate-700 border border-slate-200 w-full text-center">
-                        <div className="mb-0.5">{t.rawSrc || "ギフト元"}</div>
-                        <div className="text-[10px] text-slate-400 font-black">
-                          {t.srcBefore.toLocaleString()}pts → {t.srcAfter.toLocaleString()}pts
-                        </div>
-                      </div>
+              {filtered.map((t: any) => {
+                const isGiftee = !!(t.gifteeOrderId || t.gifteeUrl);
+                const isSelfGift = t.icon === "🎁" && !isGiftee;
 
-                      <div className="text-orange-500 font-black text-2xl leading-none py-1">↓</div>
-                      
-                      {/* 交換先表示 */}
-                      <div className="bg-orange-50 px-4 py-2 rounded-xl text-[11px] font-bold text-slate-800 border border-orange-200 w-full text-center">
-                        <div className="mb-0.5">{t.rawDst}</div>
-                        {t.dstAfter !== null && (
-                          <div className="text-[10px] text-orange-400 font-black">
-                            {t.dstBefore?.toLocaleString()}pts → {t.dstAfter.toLocaleString()}pts
+                return (
+                  <tr key={t.id} className="hover:bg-slate-50/80 transition-colors border-b-2 border-slate-100 last:border-0">
+                    <td className="p-6 align-top border-r border-slate-50">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-lg">{t.icon}</span>
+                        <div className="text-sm font-black text-slate-900 leading-tight">{t.uName}</div>
+                      </div>
+                      <div className="text-[11px] text-slate-700 font-bold mb-1">{t.userEmail}</div>
+                      <div className="text-[11px] text-slate-500 font-medium mb-3">{new Date(t.createdAt).toLocaleString('ja-JP')}</div>
+                      {t.trackingNumber && (
+                        <div className="inline-block bg-slate-900 text-white text-[9px] font-black px-2 py-1 rounded tracking-wider shadow-sm">ID: {t.trackingNumber}</div>
+                      )}
+                      {isSelfGift && (
+                        <div className="mt-2">
+                          <button
+                            onClick={() => setSelectedShipping({
+                              name: t.shippingName,
+                              zip: t.shippingZip,
+                              address: t.shippingAddress,
+                              tel: t.shippingTel,
+                              giftName: t.rawDst,
+                              uName: t.uName
+                            })}
+                            className="block text-[9px] font-black text-slate-500 bg-slate-100 hover:bg-orange-500 hover:text-white border border-slate-200 px-2 py-1 rounded transition-all shadow-sm"
+                          >
+                            📍 送付先確認
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                    <td className="p-6 align-top text-center border-r border-slate-50">
+                      <div className="inline-flex flex-col items-center space-y-2 w-full max-w-md">
+                        <div className="bg-slate-100 px-4 py-2 rounded-xl text-[11px] font-bold text-slate-700 border border-slate-200 w-full text-center">
+                          <div className="mb-0.5">{t.rawSrc || "ギフト元"}</div>
+                          <div className="text-[10px] text-slate-400 font-black">
+                            {t.srcBefore.toLocaleString()}pts → {t.srcAfter.toLocaleString()}pts
+                          </div>
+                        </div>
+
+                        <div className="text-orange-500 font-black text-2xl leading-none py-1">↓</div>
+                        
+                        <div className="bg-orange-50 px-4 py-2 rounded-xl text-[11px] font-bold text-slate-800 border border-orange-200 w-full text-center">
+                          <div className="mb-0.5">{t.rawDst}</div>
+                          {t.dstAfter !== null && (
+                            <div className="text-[10px] text-orange-400 font-black">
+                              {t.dstBefore?.toLocaleString()}pts → {t.dstAfter.toLocaleString()}pts
+                            </div>
+                          )}
+                        </div>
+                        
+                        {isGiftee && (
+                          <div className="mt-3 flex flex-col items-center">
+                            <div className="text-[9px] font-black text-orange-400 uppercase tracking-tighter mb-1">Giftee Receipt URL</div>
+                            {t.gifteeUrl ? (
+                              <a 
+                                href={t.gifteeUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="text-[10px] text-blue-500 font-bold hover:underline break-all bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 max-w-xs"
+                              >
+                                {t.gifteeUrl}
+                              </a>
+                            ) : (
+                              <div className="text-[10px] text-slate-500 bg-slate-50 px-4 py-2 rounded-xl border border-slate-200 max-w-xs italic font-medium">
+                                URL発行処理中...（まもなく表示されます）
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
-                      
-                      {t.gifteeUrl && (
-                        <div className="mt-3 flex flex-col items-center">
-                          <div className="text-[9px] font-black text-orange-400 uppercase tracking-tighter mb-1">Giftee Receipt URL</div>
-                          <a 
-                            href={t.gifteeUrl} 
-                            target="_blank" 
-                            rel="noopener noreferrer" 
-                            className="text-[10px] text-blue-500 font-bold hover:underline break-all bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 max-w-xs"
-                          >
-                            {t.gifteeUrl}
-                          </a>
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-6 text-right align-top">
-                    <div className="font-black text-orange-500 text-2xl tracking-tighter">
-                      {t.amount.toLocaleString()}<span className="text-[10px] ml-1">pts</span>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="p-6 text-right align-top">
+                      <div className="font-black text-orange-500 text-2xl tracking-tighter">
+                        {t.amount.toLocaleString()}<span className="text-[10px] ml-1">pts</span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

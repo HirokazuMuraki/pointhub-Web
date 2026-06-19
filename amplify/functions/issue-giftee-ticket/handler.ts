@@ -50,6 +50,13 @@ export const handler: Schema["issueGifteeTicket"]["functionHandler"] = async (ev
     const data: any = await response.json();
     const gifteeUrl = data.giftee_box?.url || data.gift_card?.url || "";
 
+    // 🔴 追加: URLが取得できなかった（空だった）場合のエラー処理
+    if (!gifteeUrl) {
+      // Workersから引き渡されたGiftee側のエラー理由（invalid_paramsなど）の抽出を試みる
+      const reason = data.invalid_params?.[0]?.reason || data.title || "発行期間外、またはコードに誤りがあります。";
+      throw new Error(`デジタルギフト発行失敗: ${reason}`);
+    }
+
     try {
       const subject = "【PointHub】ギフトURL発行のお知らせ";
       const bodyText = `${displayName}
@@ -67,8 +74,8 @@ ${gifteeUrl}
 
 ■ ポイント利用詳細:
 ・交換元サービス：${fromServiceName || "---"}
-・　消費ポイント：${point?.toLocaleString() ?? "---"} ポイント
-・　交換後の残高：${balanceAfter?.toLocaleString() ?? "---"} ポイント
+・ 消費ポイント：${point?.toLocaleString() ?? "---"} ポイント
+・ 交換後の残高：${balanceAfter?.toLocaleString() ?? "---"} ポイント
 
 ※こちらのURLはマイページの「交換履歴」からもご確認いただけます。
 
@@ -98,6 +105,7 @@ ${gifteeUrl}
     };
   } catch (error: any) {
     console.error("Lambda Error:", error);
+    // 🔴 修正: エラーメッセージをフロントにしっかりと引き渡す
     return { success: false, message: error.message, url: "", orderId: issueIdentity };
   }
 };
