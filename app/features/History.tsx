@@ -7,6 +7,9 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
   const [loading, setLoading] = useState(true);
   const [showSearch, setShowSearch] = useState(false);
   
+  // ポップアップ（送付先）管理用の状態
+  const [selectedShipping, setSelectedShipping] = useState<any | null>(null);
+  
   const initialInput = { 
     dateFrom: "", dateTo: "", minAmt: "", maxAmt: "", srcName: "", dstName: "", trackingNumber: "" 
   };
@@ -58,7 +61,9 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
             srcBefore, srcAfter,
             dstBefore: null, dstAfter: null,
             amount: o.pointSpent,
-            trackingNumber: o.trackingNumber || ""
+            trackingNumber: o.trackingNumber || "",
+            gifteeUrl: o.gifteeUrl || "",
+            gifteeOrderId: o.gifteeOrderId || ""
           };
         });
 
@@ -113,7 +118,7 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
         )}
       </div>
 
-      {/* 検索入力エリア (表示/非表示制御) */}
+      {/* 検索入力エリア */}
       {showSearch && (
         <div className="bg-white p-6 rounded-[2rem] mb-8 border-2 border-slate-100 shadow-sm space-y-4 animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -155,58 +160,147 @@ export const HistoryList = ({ client, userEmail, styles }: any) => {
           </div>
         </div>
         <div className="divide-y-2 divide-slate-100">
-          {filtered.map((t: any) => (
-            <div key={t.id} className="p-6 hover:bg-slate-50/50 transition-colors">
-              <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-4">
-                <div className="sm:col-span-3 space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{t.icon}</span>
-                    <div className="text-[11px] font-bold text-slate-700 leading-tight">{new Date(t.createdAt).toLocaleString('ja-JP')}</div>
-                  </div>
-                  {t.trackingNumber && (
-                    <div className="inline-block bg-slate-900 text-white text-[9px] font-black px-2 py-1 rounded tracking-wider shadow-sm">ID: {t.trackingNumber}</div>
-                  )}
-                </div>
-                <div className="sm:col-span-6 flex flex-col items-start sm:items-center">
-                  <div className="inline-flex flex-col items-center space-y-2 w-full max-w-md text-center">
-                    <div className="bg-slate-100 px-4 py-2 rounded-xl text-[11px] font-bold text-slate-700 border border-slate-200 w-full">
-                      <div className="mb-0.5">{t.rawSrc || "ギフト元"}</div>
-                      <div className="text-[10px] text-slate-400 font-black">
-                        {t.srcBefore.toLocaleString()}pts → {t.srcAfter.toLocaleString()}pts
-                      </div>
+          {filtered.map((t: any) => {
+            // 【最も安全な判定】gifteeOrderId または gifteeUrl が存在すれば「Giftee商品」とみなす
+            const isGiftee = !!(t.gifteeOrderId || t.gifteeUrl);
+            const isSelfGift = t.icon === "🎁" && !isGiftee;
+
+            return (
+              <div key={t.id} className="p-6 hover:bg-slate-50/50 transition-colors">
+                <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-4">
+                  <div className="sm:col-span-3 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{t.icon}</span>
+                      <div className="text-[11px] font-bold text-slate-700 leading-tight">{new Date(t.createdAt).toLocaleString('ja-JP')}</div>
                     </div>
-                    <div className="text-orange-500 font-black text-2xl leading-none py-1">↓</div>
-                    <div className="bg-orange-50 px-4 py-2 rounded-xl text-[11px] font-bold text-slate-800 border border-orange-200 w-full">
-                      <div className="mb-0.5">{t.rawDst}</div>
-                      {t.dstAfter !== null && (
-                        <div className="text-[10px] text-orange-400 font-black">
-                          {t.dstBefore?.toLocaleString()}pts → {t.dstAfter.toLocaleString()}pts
-                        </div>
-                      )}
-                    </div>
-                    {t.gifteeUrl && (
-                      <div className="mt-2 w-full flex flex-col items-center">
-                        <div className="text-[9px] font-black text-orange-400 uppercase tracking-tighter mb-0.5">Gift Receipt URL</div>
-                        <a 
-                          href={t.gifteeUrl} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className="text-[10px] text-blue-500 font-bold hover:underline break-all bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 text-center"
+                    {t.trackingNumber && (
+                      <div className="inline-block bg-slate-900 text-white text-[9px] font-black px-2 py-1 rounded tracking-wider shadow-sm">ID: {t.trackingNumber}</div>
+                    )}
+                    {/* 完全なる自社ギフトの場合のみ「送付先確認」ボタンを出す */}
+                    {isSelfGift && (
+                      <div className="pt-0.5">
+                        <button
+                          onClick={() => setSelectedShipping({
+                            name: t.shippingName,
+                            zip: t.shippingZip,
+                            address: t.shippingAddress,
+                            tel: t.shippingTel,
+                            giftName: t.rawDst
+                          })}
+                          className="block text-[9px] font-black text-slate-500 bg-slate-100 hover:bg-orange-500 hover:text-white border border-slate-200 px-2 py-1 rounded transition-all shadow-sm"
                         >
-                          {t.gifteeUrl}
-                        </a>
+                          📍 送付先確認
+                        </button>
                       </div>
                     )}
                   </div>
+                  <div className="sm:col-span-6 flex flex-col items-start sm:items-center">
+                    <div className="inline-flex flex-col items-center space-y-2 w-full max-w-md text-center">
+                      <div className="bg-slate-100 px-4 py-2 rounded-xl text-[11px] font-bold text-slate-700 border border-slate-200 w-full">
+                        <div className="mb-0.5">{t.rawSrc || "ギフト元"}</div>
+                        <div className="text-[10px] text-slate-400 font-black">
+                          {t.srcBefore.toLocaleString()}pts → {t.srcAfter.toLocaleString()}pts
+                        </div>
+                      </div>
+                      <div className="text-orange-500 font-black text-2xl leading-none py-1">↓</div>
+                      <div className="bg-orange-50 px-4 py-2 rounded-xl text-[11px] font-bold text-slate-800 border border-orange-200 w-full">
+                        <div className="mb-0.5">{t.rawDst}</div>
+                        {t.dstAfter !== null && (
+                          <div className="text-[10px] text-orange-400 font-black">
+                            {t.dstBefore?.toLocaleString()}pts → {t.dstAfter.toLocaleString()}pts
+                          </div>
+                        )}
+                      </div>
+                      {isGiftee && (
+                        <div className="mt-2 w-full flex flex-col items-center">
+                          <div className="text-[9px] font-black text-orange-400 uppercase tracking-tighter mb-0.5">Gift Receipt URL</div>
+                          {t.gifteeUrl ? (
+                            <a 
+                              href={t.gifteeUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="text-[10px] text-blue-500 font-bold hover:underline break-all bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 text-center"
+                            >
+                              {t.gifteeUrl}
+                            </a>
+                          ) : (
+                            <div className="text-[10px] text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-center italic font-medium">
+                              URL発行処理中...（まもなく表示されます）
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="sm:col-span-3 text-left sm:text-right">
+                    <div className="font-black text-orange-500 text-2xl tracking-tighter leading-none">{t.amount.toLocaleString()}<span className="text-[10px] ml-1">pts</span></div>
+                  </div>
                 </div>
-                <div className="sm:col-span-3 text-left sm:text-right">
-                  <div className="font-black text-orange-500 text-2xl tracking-tighter leading-none">{t.amount.toLocaleString()}<span className="text-[10px] ml-1">pts</span></div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 送付先確認ポップアップ(モーダル) */}
+      {selectedShipping && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200"
+          onClick={() => setSelectedShipping(null)}
+        >
+          <div 
+            className="bg-white rounded-[2rem] border-2 border-slate-100 p-6 w-full max-w-md shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200 text-left"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[9px] font-black bg-orange-100 text-orange-600 px-2 py-0.5 rounded uppercase tracking-wider">自社ギフト配送先</span>
+                <h4 className="text-sm font-black text-slate-800 mt-1 truncate max-w-[280px]">{selectedShipping.giftName}</h4>
+              </div>
+              <button 
+                onClick={() => setSelectedShipping(null)}
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold bg-slate-50 hover:bg-slate-100 p-1.5 rounded-lg transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-3.5 py-1">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 block mb-0.5">お名前</label>
+                <div className="text-xs font-black text-slate-800 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/60">
+                  {selectedShipping.name || "---"} 様
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 block mb-0.5">郵便番号</label>
+                <div className="text-xs font-bold text-slate-800 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/60">
+                  {selectedShipping.zip ? `〒${selectedShipping.zip}` : "---"}
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 block mb-0.5">配送先住所</label>
+                <div className="text-xs font-bold text-slate-800 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/60 leading-relaxed break-all">
+                  {selectedShipping.address || "---"}
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 block mb-0.5">電話番号</label>
+                <div className="text-xs font-bold text-slate-800 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/60">
+                  {selectedShipping.tel || "---"}
                 </div>
               </div>
             </div>
-          ))}
+
+            <button 
+              onClick={() => setSelectedShipping(null)}
+              className="w-full py-3 bg-slate-900 text-white text-[11px] font-black rounded-xl hover:bg-orange-500 transition-all shadow-md"
+            >
+              閉じる
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

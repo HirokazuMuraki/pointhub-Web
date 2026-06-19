@@ -80,7 +80,7 @@ export const UserProfile = ({ client, userEmail, styles }: any) => {
         if (newProfile) setProfile(prev => ({ ...prev, id: newProfile.id }));
       }
       
-      await showAlert("プロフィールを保存しました。");
+      await showAlert("プロフィールを保存しました");
       await fetchProfile(); 
     } catch (err) {
       console.error("Save error:", err);
