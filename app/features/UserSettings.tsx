@@ -85,29 +85,84 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
       return await showAlert("入力を確認してください");
     }
 
+    let svcIdToVerify = selectedSvcId;
+    let svcNameToVerify = "";
+
     if (!isEditing) {
       const isDuplicate = userCredentials.some(
         (c) => c.serviceId === selectedSvcId && c.loginId === targetLoginId
       );
       if (isDuplicate) return await showAlert("このIDは既に同じサービスで登録されています。");
+      
+      const svc = services.find((s: any) => s.id === selectedSvcId);
+      svcNameToVerify = svc?.name || "";
     } else {
       const currentCred = userCredentials.find(c => c.id === isEditing);
       const isDuplicate = userCredentials.some(
         (c) => c.id !== isEditing && c.serviceId === currentCred?.serviceId && c.loginId === targetLoginId
       );
       if (isDuplicate) return await showAlert("このIDは既に同じサービスで登録されています。");
+      
+      svcIdToVerify = currentCred?.serviceId || "";
+      svcNameToVerify = currentCred?.serviceName || "";
+    }
+
+    // 🔴 追記：本番用（ショップサーブ）サービスの場合、事前に会員情報（ポイント照会API）を認証テストする
+    let validatedInitialBalance = 300; // ダミーなどのデフォルト初期値
+    if (!svcNameToVerify.includes("ダミー")) {
+      const info = getSvcInfo(svcIdToVerify);
+      try {
+        const finalAuthKey = info.masterAuthKey || targetPassword;
+        const { data, errors } = await client.queries.getShopservePoints({
+          accountId: targetLoginId,
+          shopId: info.shopId,
+          authKey: finalAuthKey
+        });
+
+        if (errors && errors.length > 0) {
+          throw new Error(errors[0].message);
+        }
+
+        const res = typeof data === 'string' ? JSON.parse(data) : data;
+        if (!res || (res.success !== undefined && !res.success)) {
+          throw new Error(res.message || "認証レスポンスが不正です。");
+        }
+
+        // 認証成功：最新のポイントを初期値として設定できるように取得
+        validatedInitialBalance = res.point ?? res.points ?? 0;
+      } catch (authErr: any) {
+        console.error("事前会員認証失敗:", authErr);
+        return await showAlert(`会員認証エラー: 会員IDまたはパスワードが正しくありません。\n(${authErr.message || "接続失敗"})`);
+      }
     }
 
     try {
       if (isEditing) {
-        await client.models.UserServiceCredential.update({ id: isEditing, loginId: targetLoginId, password: targetPassword });
+        await client.models.UserServiceCredential.update({ 
+          id: isEditing, 
+          loginId: targetLoginId, 
+          password: targetPassword,
+          // 既存データの更新時も認証が成功した最新残高を同期する
+          ...(!svcNameToVerify.includes("ダミー") ? { dummyBalance: validatedInitialBalance } : {})
+        });
+        
+        // 更新用ステートにも即座に反映
+        if (!svcNameToVerify.includes("ダミー")) {
+          setFetchedPoints(prev => ({ ...prev, [isEditing]: validatedInitialBalance }));
+        }
       } else {
         const svc = services.find((s: any) => s.id === selectedSvcId);
-        await client.models.UserServiceCredential.create({ 
+        const newCred = await client.models.UserServiceCredential.create({ 
           userEmail, serviceId: selectedSvcId, serviceName: svc.name, 
-          loginId: targetLoginId, password: targetPassword, dummyBalance: 300 
+          loginId: targetLoginId, password: targetPassword, dummyBalance: validatedInitialBalance 
         });
+
+        // 新規登録直後も、fetchedPoints側に初期値を設定してローカル表示を最適化
+        if (newCred?.data?.id && !svc.name.includes("ダミー")) {
+          setFetchedPoints(prev => ({ ...prev, [newCred.data.id]: validatedInitialBalance }));
+        }
       }
+      await showAlert("連携情報を保存しました。");
       resetForm();
     } catch (err) { 
       await showAlert("保存失敗"); 
