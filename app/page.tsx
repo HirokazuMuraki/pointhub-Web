@@ -53,6 +53,10 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
   const [displayName, setDisplayName] = useState<string>("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [policyContent, setPolicyContent] = useState<{title: string, content: string} | null>(null);
+  
+  // 🔴 追記: 連携数をリアルタイム管理するためのステート
+  const [hasCredentials, setHasCredentials] = useState<boolean>(true);
+  
   const userEmail = user?.signInDetails?.loginId || user?.username || "";
 
   const refreshServices = useCallback(async () => {
@@ -68,6 +72,15 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
       if (groups?.includes("Admins")) setIsAdmin(true);
     });
     refreshServices();
+
+    // 🔴 追記: 現在のログインユーザーの連携状況をリアルタイム監視
+    const credSub = client.models.UserServiceCredential.observeQuery({
+      filter: { userEmail: { eq: userEmail } }
+    }).subscribe({
+      next: ({ items }: any) => {
+        setHasCredentials(items.length > 0);
+      },
+    });
 
     const syncProfile = async () => {
       if (!userEmail) return;
@@ -91,6 +104,8 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
       }
     };
     syncProfile();
+
+    return () => credSub.unsubscribe();
   }, [userEmail, refreshServices]);
 
   const menuItems = [
@@ -116,17 +131,39 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
   return (
     <AppLayoutWrapper>
       <div className="h-screen bg-[#F8FAFC] flex flex-col lg:flex-row overflow-hidden w-full">
+        {/* モバイル用ヘッダー */}
         <header className="lg:hidden flex items-center justify-between bg-white px-6 py-4 border-b border-slate-100 sticky top-0 z-30 shrink-0">
-          <h1 className="text-xl font-black italic text-slate-900">POINT<span className="text-orange-500">HUB</span></h1>
+          <div>
+            <h1 className="text-xl font-black italic text-slate-900">POINT<span className="text-orange-500">HUB</span></h1>
+            {/* 🔴 モバイル用ロゴ下の警告赤ボタン */}
+            {!hasCredentials && (
+              <button 
+                onClick={() => { setActiveTab("settings"); setIsSidebarOpen(false); }}
+                className="mt-1 block px-2.5 py-1 bg-red-500 hover:bg-red-600 text-white text-[9px] font-black rounded-full shadow-sm active:scale-95 transition-all animate-pulse"
+              >
+                ⚠️ 交換先を設定してください
+              </button>
+            )}
+          </div>
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-slate-900 text-2xl font-bold">{isSidebarOpen ? "✕" : "☰"}</button>
         </header>
 
         {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
 
+        {/* サイドバー（PC・モバイル共通） */}
         <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white border-r border-slate-100 flex flex-col transform transition-transform duration-300 lg:translate-x-0 lg:static lg:h-screen shrink-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
           <div className="shrink-0">
             <div className="p-8 pb-2 hidden lg:block">
               <h1 className="text-3xl font-black italic text-slate-900 leading-none">POINT<span className="text-orange-500">HUB</span></h1>
+              {/* 🔴 PC用ロゴ下の警告赤ボタン */}
+              {!hasCredentials && (
+                <button 
+                  onClick={() => setActiveTab("settings")}
+                  className="mt-3 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-[10px] font-black rounded-full shadow-sm active:scale-95 transition-all flex items-center gap-1 animate-pulse"
+                >
+                  <span>⚠️</span> 交換先を設定してください
+                </button>
+              )}
             </div>
             <div className="px-6 py-4 mt-4 lg:mt-0">
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 relative">
@@ -156,6 +193,7 @@ function Dashboard({ user, signOut }: { user: any, signOut: any }) {
           </nav>
         </aside>
 
+        {/* メインコンテンツ領域 */}
         <main className="flex-1 h-screen overflow-y-auto p-6 lg:p-12 text-slate-900 scroll-smooth">
           <div className="max-w-7xl mx-auto w-full min-h-full flex flex-col">
             <div className="flex-grow">
