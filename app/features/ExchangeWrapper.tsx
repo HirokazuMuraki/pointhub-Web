@@ -13,10 +13,7 @@ const generateTrackingNumber = () => {
   const dd = String(now.getDate()).padStart(2, '0');
   const datePart = `${yy}${mm}${dd}`;
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let randomPart = '';
-  for (let i = 0; i < 5; i++) {
-    randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
+  const randomPart = Array.from({ length: 5 }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
   return `${datePart}-${randomPart}`;
 };
 
@@ -49,6 +46,10 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
     const settings = JSON.parse(svcMaster.connectionSettings || "{}");
     return { shopId: settings?.shopId, masterAuthKey: settings?.authKey };
   }, [services]);
+
+  const isAppMembersService = (svcName: string) => {
+    return svcName?.includes("アプリメンバーズ") === true;
+  };
 
   const fetchGifts = async () => {
     try {
@@ -122,17 +123,36 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
 
       if (balanceAfter < 0) throw new Error("ポイント残高が不足しています。");
 
+      const isDummy = cred.serviceName.includes("ダミー");
+      const isAppMembers = isAppMembersService(cred.serviceName);
+
       // 1. ポイント減算
-      if (!cred.serviceName.includes("ダミー")) {
-        const info = getSvcInfo(cred.serviceId);
-        const { data: opResult } = await client.mutations.operateShopservePoints({
-          accountId: cred.loginId,
-          shopId: info?.shopId,
-          authKey: info?.masterAuthKey || cred.password,
-          amount: -latestGift.pointCost,
-          note: `PointHub-Gift:${trackingNumber}`
-        });
-        if (!opResult?.success) throw new Error(opResult?.message || "ポイント減算に失敗しました。");
+      if (!isDummy) {
+        if (isAppMembers) {
+          // ■ アプリメンバーズ用ポイント減算APIの呼び出し
+          // ※仕様PDFより、減算時は type: 2 / 減算値は正の値(ポイント数)を指定します
+          const { data: opResult, errors: opErrors } = await client.mutations.operateAppMembersPoints({
+            mailaddress: cred.loginId,
+            amount: latestGift.pointCost,
+            type: 2, // 2: 減算
+            description: `PointHub-Gift:${trackingNumber}`
+          });
+          
+          if (opErrors) throw new Error(opErrors[0].message);
+          const res = typeof opResult === 'string' ? JSON.parse(opResult) : opResult;
+          if (!res?.success) throw new Error(res?.message || "アプリメンバーズでのポイント減算に失敗しました。");
+        } else {
+          // ■ ショップサーブ用ポイント減算API
+          const info = getSvcInfo(cred.serviceId);
+          const { data: opResult } = await client.mutations.operateShopservePoints({
+            accountId: cred.loginId,
+            shopId: info?.shopId,
+            authKey: info?.masterAuthKey || cred.password,
+            amount: -latestGift.pointCost,
+            note: `PointHub-Gift:${trackingNumber}`
+          });
+          if (!opResult?.success) throw new Error(opResult?.message || "ショップサーブポイントの減算に失敗しました。");
+        }
       }
       isPointDeducted = true;
 
@@ -210,33 +230,46 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
       await Promise.all([fetchGifts(), fetchCredentials()]);
 
     } catch (err: any) {
-      // もしすでにポイントが減算された後にエラーが起きた場合、安全に元のポイントに払い戻し(相殺)を行う
+      // すでに外部ポイントが減算された後にエラーが発生した場合、安全に払い戻し（相殺）ロールバックを行う
       if (isPointDeducted && cred && selectedGift) {
         try {
-          // ローカルの残高表示を元の状態に戻す
+          // ローカル表示上の残高を元に戻す
           const { data: currentCred } = await client.models.UserServiceCredential.get({ id: cred.id });
           if (currentCred) {
             const restoredBalance = (currentCred.dummyBalance || 0) + selectedGift.pointCost;
             await client.models.UserServiceCredential.update({ id: cred.id, dummyBalance: restoredBalance });
           }
 
-          // Shopserveの実ポイントを加算して相殺する
-          if (!cred.serviceName.includes("ダミー")) {
-            const info = getSvcInfo(cred.serviceId);
-            await client.mutations.operateShopservePoints({
-              accountId: cred.loginId,
-              shopId: info?.shopId,
-              authKey: info?.masterAuthKey || cred.password,
-              amount: selectedGift.pointCost, // プラス（加算）してロールバック
-              note: `Rollback-Gift-Error`
-            });
+          const isDummy = cred.serviceName.includes("ダミー");
+          const isAppMembers = isAppMembersService(cred.serviceName);
+
+          if (!isDummy) {
+            if (isAppMembers) {
+              // ■ アプリメンバーズへのポイント払い戻し (1:加算)
+              await client.mutations.operateAppMembersPoints({
+                mailaddress: cred.loginId,
+                amount: selectedGift.pointCost,
+                type: 1, // 1: 加算
+                description: `Rollback-Gift-Error`
+              });
+            } else {
+              // ■ ショップサーブの実ポイントを加算して相殺
+              const info = getSvcInfo(cred.serviceId);
+              await client.mutations.operateShopservePoints({
+                accountId: cred.loginId,
+                shopId: info?.shopId,
+                authKey: info?.masterAuthKey || cred.password,
+                amount: selectedGift.pointCost, // プラス（加算）
+                note: `Rollback-Gift-Error`
+              });
+            }
           }
         } catch (rollbackErr) {
           console.error("ポイントの払い戻し（ロールバック）処理自体に失敗しました:", rollbackErr);
         }
       }
 
-      // 🔴 修正: エラー時に「交換内容の確認」ポップアップ（モーダル）を閉じる
+      // エラー時にモーダルを閉じる
       setSelectedGift(null);
 
       await showAlert(`交換エラー: ${err.message}`);
@@ -408,14 +441,14 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
                     {selectedGift.imageUrl ? <GiftImage path={selectedGift.imageUrl} /> : <span className="text-xl">{selectedGift._type === 'giftee' ? '🎟️' : '🎁'}</span>}
                   </div>
                   <div className="min-w-0">
-                    <p className={`text-[10px] font-black uppercase leading-none mb-1 text-orange-400`}>
+                    <p className="text-[10px] font-black uppercase leading-none mb-1 text-orange-400">
                       {selectedGift._type === 'giftee' ? 'giftee Digital Item' : 'Original Gift'}
                     </p>
                     <p className={`text-xs font-black truncate ${selectedGift._type === 'giftee' ? 'text-white' : 'text-slate-800'}`}>{selectedGift.name}</p>
                   </div>
                 </div>
                 <div className={`flex justify-between items-center p-3 rounded-xl ${selectedGift._type === 'giftee' ? 'bg-white/5' : 'bg-white/50'}`}>
-                  <span className={`text-[10px] font-black uppercase text-slate-400`}>Total Cost</span>
+                  <span className="text-[10px] font-black uppercase text-slate-400">Total Cost</span>
                   <span className="text-lg text-orange-500 font-black">{selectedGift.pointCost.toLocaleString()} pts</span>
                 </div>
               </div>

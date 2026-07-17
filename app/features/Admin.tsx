@@ -153,27 +153,45 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
   const addService = async () => {
     if (!newServiceName) return await showAlert("サービス名を入力してください");
 
-    const isDuplicate = services.some((s: any) => {
-      try {
-        const settings = JSON.parse(s.connectionSettings || "{}");
-        const isSameShopId = settings.shopId === newShopId;
-        return viewingId ? (s.id !== viewingId && isSameShopId) : isSameShopId;
-      } catch (e) {
-        return false;
-      }
-    });
+    // アプリメンバーズ設定時はショップID（newShopId）が必須でない場合があるため、重複チェックはShopIDがある場合のみおこなう
+    if (newShopId) {
+      const isDuplicate = services.some((s: any) => {
+        try {
+          const settings = JSON.parse(s.connectionSettings || "{}");
+          const isSameShopId = settings.shopId === newShopId;
+          return viewingId ? (s.id !== viewingId && isSameShopId) : isSameShopId;
+        } catch (e) {
+          return false;
+        }
+      });
 
-    if (isDuplicate) {
-      return await showAlert("このショップIDは既に登録されています。");
+      if (isDuplicate) {
+        return await showAlert("このショップIDは既に登録されています。");
+      }
     }
 
     setIsProcessing(true);
     try {
-      const settings = JSON.stringify({ shopId: newShopId, authKey: newAuthKey });
+      // 接続設定オブジェクトを作成
+      const settingsObj: any = { authKey: newAuthKey };
+      if (newShopId) settingsObj.shopId = newShopId;
+      const settings = JSON.stringify(settingsObj);
+
+      // 種別の自動判別（アプリメンバーズ / ダミー / ショップサーブ）
+      let serviceType = "SHOPSERVE";
+      let endpointUrl = "https://api.shopserve.jp/v1";
+
+      if (newServiceName.includes("アプリメンバーズ")) {
+        serviceType = "APPMEMBERS";
+        endpointUrl = "https://api.apv.jp/api"; // アプリメンバーズAPIエンドポイント
+      } else if (newServiceName.includes("ダミー")) {
+        serviceType = "DUMMY";
+      }
+
       const payload = {
         name: newServiceName,
-        type: newServiceName.includes("ダミー") ? "DUMMY" : "SHOPSERVE",
-        endpointUrl: "https://api.shopserve.jp/v1",
+        type: serviceType,
+        endpointUrl,
         connectionSettings: settings,
         description: newDescription || "サービス説明",
         status: "ACTIVE",
@@ -315,11 +333,23 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
           <div className="space-y-12">
             <section className="bg-slate-50 p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-inner space-y-6">
               <h3 className={styles.sectionTitle}>{viewingId ? "🔍 サービス詳細・編集" : "🪙 ポイント交換マスター登録"}</h3>
+              <p className="text-[10px] text-slate-400 -mt-2">
+                ※ サービス名に「アプリメンバーズ」を含めると自動的に専用の認証連携をおこないます。
+              </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div><label className={styles.label}>サービス名</label><input value={newServiceName} onChange={e=>setNewServiceName(e.target.value)} className={styles.input} /></div>
-                <div><label className={styles.label}>サービス説明</label><input value={newDescription} onChange={e=>setNewDescription(e.target.value)} className={styles.input} /></div>
-                <div><label className={styles.label}>ショップID</label><input value={newShopId} onChange={e=>setNewShopId(e.target.value)} className={styles.input} autoComplete="off" /></div>
-                <div><label className={styles.label}>APIキー</label><input type="password" value={newAuthKey} onChange={e=>setNewAuthKey(e.target.value)} className={styles.input} autoComplete="new-password" /></div>
+                <div><label className={styles.label}>サービス名</label><input value={newServiceName} onChange={e=>setNewServiceName(e.target.value)} className={styles.input} placeholder="例: アプリメンバーズ連携" /></div>
+                <div><label className={styles.label}>サービス説明</label><input value={newDescription} onChange={e=>setNewDescription(e.target.value)} className={styles.input} placeholder="説明文を入力" /></div>
+                <div>
+                  <label className={styles.label}>ショップID (ショップサーブ専用)</label>
+                  <input 
+                    value={newShopId} 
+                    onChange={e=>setNewShopId(e.target.value)} 
+                    className={styles.input} 
+                    autoComplete="off" 
+                    placeholder="アプリメンバーズの場合は空欄でOK" 
+                  />
+                </div>
+                <div><label className={styles.label}>API認証キー (共通キー)</label><input type="password" value={newAuthKey} onChange={e=>setNewAuthKey(e.target.value)} className={styles.input} autoComplete="new-password" placeholder="API接続用キーを入力" /></div>
               </div>
               <div className="flex gap-3">
                 <button onClick={addService} disabled={isProcessing} className="flex-1 py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-orange-500 transition-all shadow-xl">{viewingId ? "更新保存" : "登録"}</button>
@@ -330,7 +360,12 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
               <h3 className={styles.sectionTitle}>📋 サービス一覧</h3>
               {services.map((s: any) => (
                 <div key={s.id} className="p-6 bg-white rounded-3xl border-2 border-slate-50 flex justify-between items-center shadow-sm">
-                  <span className="font-black text-slate-800">{s.name}</span>
+                  <div className="flex flex-col">
+                    <span className="font-black text-slate-800">{s.name}</span>
+                    {s.type === "APPMEMBERS" && (
+                      <span className="text-[8px] font-black text-orange-500 bg-orange-50 w-fit px-2 py-0.5 mt-1 rounded-md">アプリメンバーズ</span>
+                    )}
+                  </div>
                   <div className="flex space-x-2">
                     <button onClick={() => startView(s)} className={`px-4 py-2 text-[10px] font-black border rounded-xl transition-all ${viewingId === s.id ? "bg-orange-500 text-white border-orange-500" : "text-slate-400 border-slate-100 hover:bg-slate-50"}`}>詳細</button>
                     <button onClick={() => deleteService(s.id)} className="px-4 py-2 text-[10px] font-black text-red-200 hover:text-red-500 transition-colors">削除</button>
@@ -412,7 +447,7 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
                   <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">ギフト種別</label>
                   <div className="flex gap-6 p-4 bg-white/5 rounded-2xl border border-white/10">
                     <label className="flex items-center space-x-3 cursor-pointer group">
-                      <input type="radio" name="gifteeType" value="giftee-card" checked={gifteeType === "giftee-card"} onChange={e=>setGifteeType(e.target.value)} className="w-5 h-5 accent-orange-500" />
+                      <input type="radio" name="gifteeType" value="giftee-card" checked={gifteeType === "giftee-card"} onChange={e=>setSelfType(e.target.value)} className="w-5 h-5 accent-orange-500" />
                       <span className={`text-sm font-black ${gifteeType === 'giftee-card' ? 'text-white' : 'text-slate-500'}`}>giftee-card</span>
                     </label>
                     <label className="flex items-center space-x-3 cursor-pointer group">

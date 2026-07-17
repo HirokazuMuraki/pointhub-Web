@@ -4,7 +4,6 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useAlert } from "./AlertProvider";
 
 export const PointExchange = ({ client, userEmail, styles, services, setActiveTab, generateTrackingNumber }: any) => {
-  // 分割代入で両方取得
   const { showAlert, showConfirm } = useAlert();
   
   const [credentials, setCredentials] = useState<any[]>([]);
@@ -26,26 +25,47 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
     return { shopId: settings?.shopId, masterAuthKey: settings?.authKey };
   }, [services]);
 
+  const isAppMembersService = (svcName: string) => {
+    return svcName?.includes("アプリメンバーズ") === true;
+  };
+
+  // 外部APIから最新ポイントを取得してDBに同期する処理
   const syncToDB = useCallback(async (cred: any) => {
     if (!cred || cred.serviceName.includes("ダミー")) return;
     try {
-      const info = getSvcInfo(cred.serviceId);
-      if (!info?.shopId) return;
-      const { data } = await client.queries.getShopservePoints({
-        accountId: cred.loginId,
-        shopId: info.shopId,
-        authKey: info.masterAuthKey || cred.password,
-      });
-      if (data) {
-        const res = typeof data === 'string' ? JSON.parse(data) : data;
-        const latestBalance = res.point ?? res.points ?? 0;
-        await client.models.UserServiceCredential.update({
-          id: cred.id,
-          dummyBalance: latestBalance
+      if (isAppMembersService(cred.serviceName)) {
+        // ■ アプリメンバーズの同期処理
+        const { data } = await client.queries.getAppMembersPoints({
+          mailaddress: cred.loginId
         });
+        if (data) {
+          const res = typeof data === 'string' ? JSON.parse(data) : data;
+          const latestBalance = res.point ?? res.points ?? 0;
+          await client.models.UserServiceCredential.update({
+            id: cred.id,
+            dummyBalance: latestBalance
+          });
+        }
+      } else {
+        // ■ ショップサーブの同期処理
+        const info = getSvcInfo(cred.serviceId);
+        if (!info?.shopId) return;
+        const { data } = await client.queries.getShopservePoints({
+          accountId: cred.loginId,
+          shopId: info.shopId,
+          authKey: info.masterAuthKey || cred.password,
+        });
+        if (data) {
+          const res = typeof data === 'string' ? JSON.parse(data) : data;
+          const latestBalance = res.point ?? res.points ?? 0;
+          await client.models.UserServiceCredential.update({
+            id: cred.id,
+            dummyBalance: latestBalance
+          });
+        }
       }
     } catch (e) {
-      console.error("同期失敗:", e);
+      console.error(`${cred.serviceName} の同期失敗:`, e);
     }
   }, [client, getSvcInfo]);
 
@@ -76,39 +96,92 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
       return await showAlert(`残高不足です（現在: ${fromCred.dummyBalance || 0}pt）`);
     }
 
-    // confirm を showConfirm に置換
     const ok = await showConfirm("交換を実行しますか？");
     if (!ok) return;
 
     setIsProcessing(true);
+    let step = 0; // ロールバック判定用ステップカウンター (1: FROM引き落とし完了)
 
     try {
       const trackingNumber = generateTrackingNumber ? generateTrackingNumber() : `TX-${Date.now()}`;
       const fromBalanceAfter = (fromCred.dummyBalance || 0) - val;
       const toBalanceAfter = (toCred.dummyBalance || 0) + val;
 
-      const targets = [
-        { cred: fromCred, op: -val, newBal: fromBalanceAfter }, 
-        { cred: toCred, op: val, newBal: toBalanceAfter }
-      ];
+      const isFromDummy = fromCred.serviceName.includes("ダミー");
+      const isFromAppMembers = isAppMembersService(fromCred.serviceName);
 
-      for (const t of targets) {
-        if (!t.cred.serviceName.includes("ダミー")) {
-          const info = getSvcInfo(t.cred.serviceId);
-          await client.mutations.operateShopservePoints({
-            accountId: t.cred.loginId,
-            shopId: info?.shopId,
-            authKey: info?.masterAuthKey || t.cred.password,
-            amount: t.op,
-            note: `PH-Exchange:${trackingNumber}`
+      const isToDummy = toCred.serviceName.includes("ダミー");
+      const isToAppMembers = isAppMembersService(toCred.serviceName);
+
+      // --- ステップ1: 交換元 (FROM) からポイントを引き落とす ---
+      if (!isFromDummy) {
+        if (isFromAppMembers) {
+          // ■ アプリメンバーズから減算 (type: 2 / 減算)
+          const { data: opResult, errors } = await client.mutations.operateAppMembersPoints({
+            mailaddress: fromCred.loginId,
+            amount: val,
+            type: 2, // 2: 減算
+            description: `PH-Exchange-Out:${trackingNumber}`
           });
+          if (errors) throw new Error(errors[0].message);
+          const res = typeof opResult === 'string' ? JSON.parse(opResult) : opResult;
+          if (!res?.success) throw new Error(res?.message || "アプリメンバーズでの減算に失敗しました。");
+        } else {
+          // ■ ショップサーブから減算
+          const info = getSvcInfo(fromCred.serviceId);
+          const { data: opResult } = await client.mutations.operateShopservePoints({
+            accountId: fromCred.loginId,
+            shopId: info?.shopId,
+            authKey: info?.masterAuthKey || fromCred.password,
+            amount: -val,
+            note: `PH-Exchange-Out:${trackingNumber}`
+          });
+          if (!opResult?.success) throw new Error(opResult?.message || "ショップサーブポイントの減算に失敗しました。");
         }
-        await client.models.UserServiceCredential.update({
-          id: t.cred.id,
-          dummyBalance: t.newBal
-        });
       }
 
+      // 交換元データベースの残高更新
+      await client.models.UserServiceCredential.update({
+        id: fromCred.id,
+        dummyBalance: fromBalanceAfter
+      });
+
+      step = 1; // FROM側の処理成功
+
+      // --- ステップ2: 交換先 (TO) へポイントを加算する ---
+      if (!isToDummy) {
+        if (isToAppMembers) {
+          // ■ アプリメンバーズへ加算 (type: 1 / 加算)
+          const { data: opResult, errors } = await client.mutations.operateAppMembersPoints({
+            mailaddress: toCred.loginId,
+            amount: val,
+            type: 1, // 1: 加算
+            description: `PH-Exchange-In:${trackingNumber}`
+          });
+          if (errors) throw new Error(errors[0].message);
+          const res = typeof opResult === 'string' ? JSON.parse(opResult) : opResult;
+          if (!res?.success) throw new Error(res?.message || "アプリメンバーズでの加算に失敗しました。");
+        } else {
+          // ■ ショップサーブへ加算
+          const info = getSvcInfo(toCred.serviceId);
+          const { data: opResult } = await client.mutations.operateShopservePoints({
+            accountId: toCred.loginId,
+            shopId: info?.shopId,
+            authKey: info?.masterAuthKey || toCred.password,
+            amount: val,
+            note: `PH-Exchange-In:${trackingNumber}`
+          });
+          if (!opResult?.success) throw new Error(opResult?.message || "ショップサーブポイントの加算に失敗しました。");
+        }
+      }
+
+      // 交換先データベースの残高更新
+      await client.models.UserServiceCredential.update({
+        id: toCred.id,
+        dummyBalance: toBalanceAfter
+      });
+
+      // 取引履歴作成
       await client.models.ExchangeTransaction.create({
         userEmail, 
         fromServiceName: fromCred.serviceName, 
@@ -119,10 +192,48 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
         trackingNumber
       });
 
-      // 🔴 共通アラートを使わず、独自の完了モーダルをセット（「通知」やベルを表示させない仕様）
       setShowSuccessModal({ trackingNumber });
       setAmount("");
     } catch (e: any) {
+      // ロールバック（補償トランザクション）: FROM引き落としが完了しているのにTO加算でコケた場合
+      if (step === 1) {
+        try {
+          const isFromDummy = fromCred.serviceName.includes("ダミー");
+          const isFromAppMembers = isAppMembersService(fromCred.serviceName);
+
+          if (!isFromDummy) {
+            if (isFromAppMembers) {
+              // アプリメンバーズへ元のポイントを払い戻し (type: 1 / 加算)
+              await client.mutations.operateAppMembersPoints({
+                mailaddress: fromCred.loginId,
+                amount: val,
+                type: 1, 
+                description: `Rollback-Exchange-Error`
+              });
+            } else {
+              // ショップサーブへ元のポイントを払い戻し
+              const info = getSvcInfo(fromCred.serviceId);
+              await client.mutations.operateShopservePoints({
+                accountId: fromCred.loginId,
+                shopId: info?.shopId,
+                authKey: info?.masterAuthKey || fromCred.password,
+                amount: val,
+                note: `Rollback-Exchange-Error`
+              });
+            }
+          }
+
+          // FROMのデータベース残高表示を元の状態に戻す
+          await client.models.UserServiceCredential.update({
+            id: fromCred.id,
+            dummyBalance: fromCred.dummyBalance || 0
+          });
+
+        } catch (rollbackErr) {
+          console.error("ポイント払い戻し（ロールバック）処理自体に失敗しました:", rollbackErr);
+        }
+      }
+
       await showAlert("エラー: " + e.message);
     } finally {
       setIsProcessing(false);
@@ -221,7 +332,6 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
         </button>
       </div>
 
-      {/* 🔴 修正：通知文字のない、独自の交換完了ポップアップ */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
           <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-300 relative text-center space-y-5">

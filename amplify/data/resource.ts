@@ -5,6 +5,10 @@ import { issueGifteeTicket } from "../functions/issue-giftee-ticket/resource";
 import { sendOrderNotification } from "../functions/send-order-notification/resource";
 import { sendShipmentNotification } from "../functions/send-shipment-notification/resource";
 
+// アプリメンバーズ用のバックエンド関数定義をインポート
+import { getAppMembersPoints } from "../functions/get-app-members-points/resource";
+import { operateAppMembersPoints } from "../functions/operate-app-members-points/resource";
+
 const schema = a.schema({
   UserProfile: a.model({
     email: a.string().required(),
@@ -127,6 +131,37 @@ const schema = a.schema({
       message: a.string(),
     }))
     .handler(a.handler.function(operateShopservePoints))
+    .authorization(allow => [allow.authenticated()]),
+
+  // アプリメンバーズ：会員ポイント参照
+  getAppMembersPoints: a
+    .query()
+    .arguments({
+      mailaddress: a.string().required(),
+    })
+    .returns(a.customType({
+      success: a.boolean(),
+      points: a.integer(),
+      message: a.string(),
+    }))
+    .handler(a.handler.function(getAppMembersPoints))
+    .authorization(allow => [allow.authenticated()]),
+
+  // アプリメンバーズ：ポイント加算・減算処理
+  operateAppMembersPoints: a
+    .mutation()
+    .arguments({
+      mailaddress: a.string().required(),
+      amount: a.integer().required(),
+      type: a.integer().required(), // 1: 加算, 2: 減算
+      description: a.string(),
+    })
+    .returns(a.customType({
+      success: a.boolean(),
+      message: a.string(),
+      totalValue: a.integer(),
+    }))
+    .handler(a.handler.function(operateAppMembersPoints))
     .authorization(allow => [allow.authenticated()]),
 
   issueGifteeTicket: a
