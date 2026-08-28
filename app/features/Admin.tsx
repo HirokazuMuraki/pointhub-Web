@@ -34,6 +34,9 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
   const [newDescription, setNewDescription] = useState("");
   const [newShopId, setNewShopId] = useState("");
   const [newAuthKey, setNewAuthKey] = useState("");
+  const [newAccessToken, setNewAccessToken] = useState("");
+  const [showAuthKey, setShowAuthKey] = useState(false);
+  const [showAccessToken, setShowAccessToken] = useState(false);
   const [viewingId, setViewingId] = useState<string | null>(null);
 
   const [gifts, setGifts] = useState<any[]>([]);
@@ -175,16 +178,22 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
       // 接続設定オブジェクトを作成
       const settingsObj: any = { authKey: newAuthKey };
       if (newShopId) settingsObj.shopId = newShopId;
+      if (newAccessToken) settingsObj.accessToken = newAccessToken;
       const settings = JSON.stringify(settingsObj);
 
-      // 種別の自動判別（アプリメンバーズ / ダミー / ショップサーブ）
+      // 種別の自動判別（アプリメンバーズ / MAKESHOP / ダミー / ショップサーブ）
       let serviceType = "SHOPSERVE";
       let endpointUrl = "https://api.shopserve.jp/v1";
 
-      if (newServiceName.includes("アプリメンバーズ")) {
+      const lowerName = newServiceName.toLowerCase();
+
+      if (lowerName.includes("アプリメンバーズ")) {
         serviceType = "APPMEMBERS";
         endpointUrl = "https://api.apv.jp/api"; // アプリメンバーズAPIエンドポイント
-      } else if (newServiceName.includes("ダミー")) {
+      } else if (lowerName.includes("makeshop")) {
+        serviceType = "MAKESHOP";
+        endpointUrl = "https://api.makeshop.jp/v1"; // MAKESHOP APIエンドポイント
+      } else if (lowerName.includes("ダミー")) {
         serviceType = "DUMMY";
       }
 
@@ -216,7 +225,8 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
   };
 
   const resetServiceForm = () => {
-    setNewServiceName(""); setNewDescription(""); setNewShopId(""); setNewAuthKey("");
+    setNewServiceName(""); setNewDescription(""); setNewShopId(""); setNewAuthKey(""); setNewAccessToken("");
+    setShowAuthKey(false); setShowAccessToken(false);
     setViewingId(null);
   };
 
@@ -288,8 +298,9 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
       const settings = JSON.parse(service.connectionSettings || "{}");
       setNewShopId(settings.shopId || "");
       setNewAuthKey(settings.authKey || "");
+      setNewAccessToken(settings.accessToken || "");
     } catch (e) {
-      setNewShopId(""); setNewAuthKey("");
+      setNewShopId(""); setNewAuthKey(""); setNewAccessToken("");
     }
     scrollToTop();
   };
@@ -334,22 +345,81 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
             <section className="bg-slate-50 p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-inner space-y-6">
               <h3 className={styles.sectionTitle}>{viewingId ? "🔍 サービス詳細・編集" : "🪙 ポイント交換マスター登録"}</h3>
               <p className="text-[10px] text-slate-400 -mt-2">
-                ※ サービス名に「アプリメンバーズ」を含めると自動的に専用の認証連携をおこないます。
+                ※ サービス名に「アプリメンバーズ」または「MAKESHOP」を含めると自動的に専用の認証連携をおこないます。
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div><label className={styles.label}>サービス名</label><input value={newServiceName} onChange={e=>setNewServiceName(e.target.value)} className={styles.input} placeholder="例: アプリメンバーズ連携" /></div>
+                <div><label className={styles.label}>サービス名</label><input value={newServiceName} onChange={e=>setNewServiceName(e.target.value)} className={styles.input} placeholder="例: MAKESHOP連携" /></div>
                 <div><label className={styles.label}>サービス説明</label><input value={newDescription} onChange={e=>setNewDescription(e.target.value)} className={styles.input} placeholder="説明文を入力" /></div>
                 <div>
-                  <label className={styles.label}>ショップID (ショップサーブ専用)</label>
+                  <label className={styles.label}>ショップID</label>
                   <input 
                     value={newShopId} 
                     onChange={e=>setNewShopId(e.target.value)} 
                     className={styles.input} 
                     autoComplete="off" 
-                    placeholder="アプリメンバーズの場合は空欄でOK" 
+                    placeholder="ショップIDを入力（アプリメンバーズは空欄可）" 
                   />
                 </div>
-                <div><label className={styles.label}>API認証キー (共通キー)</label><input type="password" value={newAuthKey} onChange={e=>setNewAuthKey(e.target.value)} className={styles.input} autoComplete="new-password" placeholder="API接続用キーを入力" /></div>
+                <div>
+                  <label className={styles.label}>API認証キー (共通キー)</label>
+                  <div className="relative flex items-center">
+                    <input 
+                      type={showAuthKey ? "text" : "password"} 
+                      value={newAuthKey} 
+                      onChange={e=>setNewAuthKey(e.target.value)} 
+                      className={`${styles.input} pr-12`} 
+                      autoComplete="new-password" 
+                      placeholder="API接続用キーを入力" 
+                    />
+                    <button 
+                      type="button" 
+                      onClick={() => setShowAuthKey(!showAuthKey)} 
+                      className="absolute right-4 text-slate-400 hover:text-slate-600 focus:outline-none"
+                      title={showAuthKey ? "非表示にする" : "表示する"}
+                    >
+                      {showAuthKey ? (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858-5.858A9.954 9.954 0 0112 3c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m-4.692-4.692a3 3 0 00-4.243-4.243m4.243 4.243L3 3l18 18" />
+                        </svg>
+                      ) : (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </div>
+                <div className="md:col-span-2">
+                  <label className={styles.label}>アクセストークン / トークン (MAKESHOP等で必要な場合)</label>
+                  <div className="relative flex items-center">
+                    <input 
+                      type={showAccessToken ? "text" : "password"} 
+                      value={newAccessToken} 
+                      onChange={e=>setNewAccessToken(e.target.value)} 
+                      className={`${styles.input} pr-12`} 
+                      autoComplete="new-password" 
+                      placeholder="アクセストークンを入力（任意）" 
+                    />
+                    <button 
+                      type="button" 
+                      onClick={() => setShowAccessToken(!showAccessToken)} 
+                      className="absolute right-4 text-slate-400 hover:text-slate-600 focus:outline-none"
+                      title={showAccessToken ? "非表示にする" : "表示する"}
+                    >
+                      {showAccessToken ? (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858-5.858A9.954 9.954 0 0112 3c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m-4.692-4.692a3 3 0 00-4.243-4.243m4.243 4.243L3 3l18 18" />
+                        </svg>
+                      ) : (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
               <div className="flex gap-3">
                 <button onClick={addService} disabled={isProcessing} className="flex-1 py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-orange-500 transition-all shadow-xl">{viewingId ? "更新保存" : "登録"}</button>
@@ -364,6 +434,9 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
                     <span className="font-black text-slate-800">{s.name}</span>
                     {s.type === "APPMEMBERS" && (
                       <span className="text-[8px] font-black text-orange-500 bg-orange-50 w-fit px-2 py-0.5 mt-1 rounded-md">アプリメンバーズ</span>
+                    )}
+                    {s.type === "MAKESHOP" && (
+                      <span className="text-[8px] font-black text-blue-500 bg-blue-50 w-fit px-2 py-0.5 mt-1 rounded-md">MAKESHOP</span>
                     )}
                   </div>
                   <div className="flex space-x-2">
@@ -447,7 +520,7 @@ export const AdminPanel = ({ client, styles, services = [], onRefresh }: any) =>
                   <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">ギフト種別</label>
                   <div className="flex gap-6 p-4 bg-white/5 rounded-2xl border border-white/10">
                     <label className="flex items-center space-x-3 cursor-pointer group">
-                      <input type="radio" name="gifteeType" value="giftee-card" checked={gifteeType === "giftee-card"} onChange={e=>setSelfType(e.target.value)} className="w-5 h-5 accent-orange-500" />
+                      <input type="radio" name="gifteeType" value="giftee-card" checked={gifteeType === "giftee-card"} onChange={e=>setGifteeType(e.target.value)} className="w-5 h-5 accent-orange-500" />
                       <span className={`text-sm font-black ${gifteeType === 'giftee-card' ? 'text-white' : 'text-slate-500'}`}>giftee-card</span>
                     </label>
                     <label className="flex items-center space-x-3 cursor-pointer group">

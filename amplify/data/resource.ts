@@ -9,6 +9,10 @@ import { sendShipmentNotification } from "../functions/send-shipment-notificatio
 import { getAppMembersPoints } from "../functions/get-app-members-points/resource";
 import { operateAppMembersPoints } from "../functions/operate-app-members-points/resource";
 
+// MakeShop用のバックエンド関数定義をインポート
+import { getMakeshopPoints } from "../functions/get-makeshop-points/resource";
+import { operateMakeshopPoints } from "../functions/operate-makeshop-points/resource";
+
 const schema = a.schema({
   UserProfile: a.model({
     email: a.string().required(),
@@ -164,6 +168,39 @@ const schema = a.schema({
     .handler(a.handler.function(operateAppMembersPoints))
     .authorization(allow => [allow.authenticated()]),
 
+  // MakeShop：会員ポイント参照
+  getMakeshopPoints: a
+    .query()
+    .arguments({
+      mailaddress: a.string(),
+      memberId: a.string(),
+    })
+    .returns(a.customType({
+      success: a.boolean(),
+      points: a.integer(),
+      message: a.string(),
+    }))
+    .handler(a.handler.function(getMakeshopPoints))
+    .authorization(allow => [allow.authenticated()]),
+
+  // MakeShop：ポイント加算・減算処理
+  operateMakeshopPoints: a
+    .mutation()
+    .arguments({
+      mailaddress: a.string(),
+      memberId: a.string(),
+      amount: a.integer().required(),
+      type: a.integer().required(),
+      description: a.string(),
+    })
+    .returns(a.customType({
+      success: a.boolean(),
+      message: a.string(),
+      totalValue: a.integer(),
+    }))
+    .handler(a.handler.function(operateMakeshopPoints))
+    .authorization(allow => [allow.authenticated()]),
+
   issueGifteeTicket: a
     .query()
     .arguments({
@@ -198,7 +235,7 @@ const schema = a.schema({
       balanceBefore: a.integer(),
       balanceAfter: a.integer(),
       trackingNumber: a.string(),
-      orderSourceName: a.string(), // 追加：引数として受け取れるように
+      orderSourceName: a.string(),
     })
     .returns(a.customType({
       success: a.boolean(),
@@ -237,7 +274,7 @@ const schema = a.schema({
       success: a.boolean(),
       message: a.string(),
     }))
-    .handler(a.handler.function(sendOrderNotification)) // 既存の送信関数を再利用
+    .handler(a.handler.function(sendOrderNotification))
     .authorization(allow => [allow.authenticated()]),
 });
 

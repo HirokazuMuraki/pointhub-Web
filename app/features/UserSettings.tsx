@@ -34,11 +34,22 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
     };
   };
 
+  const isEmailOnlyService = (svcName: string) => {
+    if (!svcName) return false;
+    const nameUpper = svcName.toUpperCase();
+    return nameUpper.includes("アプリメンバーズ") || nameUpper.includes("MAKESHOP") || nameUpper.includes("MAKE SHOP");
+  };
+
   const isAppMembersService = (svcName: string) => {
     return svcName?.includes("アプリメンバーズ") === true;
   };
 
-  // 安全にJSONをパースするヘルパー
+  const isMakeShopService = (svcName: string) => {
+    if (!svcName) return false;
+    const nameUpper = svcName.toUpperCase();
+    return nameUpper.includes("MAKESHOP") || nameUpper.includes("MAKE SHOP");
+  };
+
   const safeJsonParse = (str: any) => {
     if (typeof str !== 'string') return str;
     if (!str || str.trim() === "") return null;
@@ -50,6 +61,40 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
     }
   };
 
+  // サービスごとのポイント照会・認証処理の共通関数
+  const callServicePointApi = async (svcName: string, svcId: string, loginId: string, passwordInput?: string) => {
+    const info = getSvcInfo(svcId);
+
+    if (isAppMembersService(svcName)) {
+      const { data, errors } = await client.queries.getAppMembersPoints({
+        mailaddress: loginId,
+        shopId: info.shopId,
+        authKey: info.masterAuthKey
+      });
+      if (errors && errors.length > 0) throw new Error(errors[0].message);
+      return safeJsonParse(data);
+
+    } else if (isMakeShopService(svcName)) {
+      // メールアドレス指定のみでMakeShop照会を行う（memberIdは送信しない）
+      const { data, errors } = await client.queries.getMakeshopPoints({
+        mailaddress: loginId
+      });
+      if (errors && errors.length > 0) throw new Error(errors[0].message);
+      return safeJsonParse(data);
+
+    } else {
+      // Shopserve 等
+      const finalAuthKey = info.masterAuthKey || passwordInput;
+      const { data, errors } = await client.queries.getShopservePoints({
+        accountId: loginId,
+        shopId: info.shopId,
+        authKey: finalAuthKey
+      });
+      if (errors && errors.length > 0) throw new Error(errors[0].message);
+      return safeJsonParse(data);
+    }
+  };
+
   const fetchPoint = async (credential: any) => {
     if (credential.serviceName.includes("ダミー")) {
       setFetchedPoints(prev => ({ ...prev, [credential.id]: credential.dummyBalance ?? 0 }));
@@ -58,51 +103,24 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
 
     setIsLoading(prev => ({ ...prev, [credential.id]: true }));
     try {
-      if (isAppMembersService(credential.serviceName)) {
-        const info = getSvcInfo(credential.serviceId);
-        const { data, errors } = await client.queries.getAppMembersPoints({
-          mailaddress: credential.loginId,
-          shopId: info.shopId,
-          authKey: info.masterAuthKey
-        });
-        if (errors) throw new Error(errors[0].message);
+      const res = await callServicePointApi(
+        credential.serviceName, 
+        credential.serviceId, 
+        credential.loginId, 
+        credential.password
+      );
 
-        console.log("アプリメンバーズ生レスポンスデータ:", data);
-
-        const res = safeJsonParse(data);
-        if (!res || (res.success !== undefined && !res.success)) {
-          throw new Error(res?.message || "ポイント取得に失敗しました。レスポンスが空、または解析できません。");
-        }
-
-        const latestBalance = res.points ?? res.point ?? 0;
-        setFetchedPoints(prev => ({ ...prev, [credential.id]: latestBalance }));
-
-        await client.models.UserServiceCredential.update({
-          id: credential.id,
-          dummyBalance: latestBalance
-        });
-      } else {
-        const info = getSvcInfo(credential.serviceId);
-        const finalAuthKey = info.masterAuthKey || credential.password;
-        const { data, errors } = await client.queries.getShopservePoints({
-          accountId: credential.loginId,
-          shopId: info.shopId,
-          authKey: finalAuthKey
-        });
-        if (errors) throw new Error(errors[0].message);
-
-        const res = safeJsonParse(data);
-        if (!res) throw new Error("ショップサーブの認証レスポンスが解析できません。");
-        
-        const latestBalance = res.point ?? res.points ?? 0;
-
-        setFetchedPoints(prev => ({ ...prev, [credential.id]: latestBalance }));
-
-        await client.models.UserServiceCredential.update({
-          id: credential.id,
-          dummyBalance: latestBalance
-        });
+      if (!res || (res.success !== undefined && !res.success)) {
+        throw new Error(res?.message || "ポイント取得に失敗しました。");
       }
+
+      const latestBalance = res.point ?? res.points ?? 0;
+      setFetchedPoints(prev => ({ ...prev, [credential.id]: latestBalance }));
+
+      await client.models.UserServiceCredential.update({
+        id: credential.id,
+        dummyBalance: latestBalance
+      });
 
     } catch (err: any) {
       console.error(err);
@@ -124,11 +142,11 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
   };
 
   const handleSaveCredential = async () => {
-    const isAppMembers = isEditing 
-      ? isAppMembersService(userCredentials.find(c => String(c.id) === String(isEditing))?.serviceName || "")
-      : isAppMembersService(services.find((s: any) => String(s.id) === String(selectedSvcId))?.name || "");
+    const isEmailOnly = isEditing 
+      ? isEmailOnlyService(userCredentials.find(c => String(c.id) === String(isEditing))?.serviceName || "")
+      : isEmailOnlyService(services.find((s: any) => String(s.id) === String(selectedSvcId))?.name || "");
 
-    const passwordRequired = !isAppMembers;
+    const passwordRequired = !isEmailOnly;
 
     if (!targetLoginId || (passwordRequired && !targetPassword) || (!isEditing && !selectedSvcId)) {
       return await showAlert("入力を確認してください");
@@ -160,54 +178,23 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
 
     if (!svcNameToVerify.includes("ダミー")) {
       try {
-        if (isAppMembersService(svcNameToVerify)) {
-          const info = getSvcInfo(svcIdToVerify);
-          const { data, errors } = await client.queries.getAppMembersPoints({
-            mailaddress: targetLoginId,
-            shopId: info.shopId,
-            authKey: info.masterAuthKey
-          });
+        const res = await callServicePointApi(
+          svcNameToVerify,
+          svcIdToVerify,
+          targetLoginId,
+          targetPassword
+        );
 
-          if (errors && errors.length > 0) {
-            throw new Error(errors[0].message);
-          }
-
-          console.log("アプリメンバーズ検証用生データ:", data);
-
-          if (!data) {
-            throw new Error("Amplify APIからの応答が空(null/undefined)です。AWS Lambda関数の実行エラーの可能性があります。");
-          }
-
-          const res = safeJsonParse(data);
-          if (!res || (res.success !== undefined && !res.success)) {
-            throw new Error(res?.message || "アプリメンバーズに登録されていないメールアドレスか、連携APIに異常があります。");
-          }
-
-          validatedInitialBalance = res.point ?? res.points ?? 0;
-        } else {
-          const info = getSvcInfo(svcIdToVerify);
-          const finalAuthKey = info.masterAuthKey || targetPassword;
-          const { data, errors } = await client.queries.getShopservePoints({
-            accountId: targetLoginId,
-            shopId: info.shopId,
-            authKey: finalAuthKey
-          });
-
-          if (errors && errors.length > 0) {
-            throw new Error(errors[0].message);
-          }
-
-          const res = safeJsonParse(data);
-          if (!res || (res.success !== undefined && !res.success)) {
-            throw new Error(res?.message || "認証レスポンスが不正です。");
-          }
-
-          validatedInitialBalance = res.point ?? res.points ?? 0;
+        if (!res || (res.success !== undefined && !res.success)) {
+          throw new Error(res?.message || "認証レスポンスが不正です。");
         }
+
+        validatedInitialBalance = res.point ?? res.points ?? 0;
+
       } catch (authErr: any) {
         console.error("事前会員認証失敗詳細:", authErr);
-        const errMsg = isAppMembersService(svcNameToVerify)
-          ? `会員認証エラー: アプリメンバーズに登録されていないメールアドレスか、連携エラーが発生しました。\n(${authErr.message || "接続失敗"})`
+        const errMsg = isEmailOnlyService(svcNameToVerify)
+          ? `会員認証エラー: 登録されていないメールアドレスか、連携エラーが発生しました。\n(${authErr.message || "接続失敗"})`
           : `会員認証エラー: 会員IDまたはパスワードが正しくありません。\n(${authErr.message || "接続失敗"})`;
         return await showAlert(errMsg);
       }
@@ -216,7 +203,7 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
     try {
       if (isEditing) {
         const currentCred = userCredentials.find(c => String(c.id) === String(isEditing));
-        const finalPassword = isAppMembers 
+        const finalPassword = isEmailOnly 
           ? "NO_PASSWORD_REQUIRED" 
           : (targetPassword || currentCred?.password || "");
 
@@ -237,7 +224,7 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
           serviceId: selectedSvcId, 
           serviceName: svc.name, 
           loginId: targetLoginId, 
-          password: isAppMembers ? "NO_PASSWORD_REQUIRED" : targetPassword, 
+          password: isEmailOnly ? "NO_PASSWORD_REQUIRED" : targetPassword, 
           dummyBalance: validatedInitialBalance 
         });
 
@@ -258,7 +245,7 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
     ? (userCredentials.find(c => String(c.id) === String(isEditing))?.serviceName || "")
     : (services.find((s: any) => String(s.id) === String(selectedSvcId))?.name || "");
 
-  const isAppMembersMode = isAppMembersService(activeSvcName);
+  const isEmailOnlyMode = isEmailOnlyService(activeSvcName);
 
   return (
     <div className="p-6 lg:p-8 space-y-5">
@@ -279,7 +266,7 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
                   <div>
                     <div className="font-black text-slate-800 text-base">{c.serviceName}</div>
                     <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">
-                      {isAppMembersService(c.serviceName) ? "Mail" : "ID"}: {c.loginId}
+                      {isEmailOnlyService(c.serviceName) ? "Mail" : "ID"}: {c.loginId}
                     </div>
                   </div>
                   <div className="flex gap-3">
@@ -318,17 +305,17 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
               value={targetLoginId} 
               onChange={(e) => setTargetLoginId(e.target.value)} 
               className={`${styles.input} py-3 text-sm`} 
-              placeholder={isAppMembersMode ? "登録メールアドレスを入力" : "会員ID / ショップIDを入力"} 
+              placeholder={isEmailOnlyMode ? "登録メールアドレスを入力" : "会員ID / ショップIDを入力"} 
               autoComplete="one-time-code"
             />
             <input 
               type="password" 
-              value={isAppMembersMode ? "" : targetPassword} 
+              value={isEmailOnlyMode ? "" : targetPassword} 
               onChange={(e) => setTargetPassword(e.target.value)} 
               className={`${styles.input} py-3 text-sm disabled:opacity-50`} 
-              placeholder={isAppMembersMode ? "パスワード（不要・未入力可）" : "パスワード / API認証キーを入力"} 
+              placeholder={isEmailOnlyMode ? "パスワード（不要・未入力可）" : "パスワード / API認証キーを入力"} 
               autoComplete="new-password"
-              disabled={isAppMembersMode}
+              disabled={isEmailOnlyMode}
             />
             <button onClick={handleSaveCredential} className="w-full py-3.5 bg-slate-900 text-white font-black rounded-xl hover:bg-orange-500 transition-all text-xs uppercase tracking-widest">保存する</button>
           </div>
@@ -341,17 +328,17 @@ export const UserSettings = ({ services, client, userEmail, styles }: any) => {
               value={targetLoginId} 
               onChange={(e) => setTargetLoginId(e.target.value)} 
               className={`${styles.input} py-3 text-sm bg-white`} 
-              placeholder={isAppMembersMode ? "登録メールアドレスを修正" : "IDを修正"} 
+              placeholder={isEmailOnlyMode ? "登録メールアドレスを修正" : "IDを修正"} 
               autoComplete="off"
             />
             <input 
               type="password" 
-              value={isAppMembersMode ? "" : targetPassword} 
+              value={isEmailOnlyMode ? "" : targetPassword} 
               onChange={(e) => setTargetPassword(e.target.value)} 
               className={`${styles.input} py-3 text-sm bg-white disabled:opacity-50`} 
-              placeholder={isAppMembersMode ? "パスワード（不要）" : "パスワードを修正"} 
+              placeholder={isEmailOnlyMode ? "パスワード（不要）" : "パスワードを修正"} 
               autoComplete="new-password"
-              disabled={isAppMembersMode}
+              disabled={isEmailOnlyMode}
             />
             <div className="flex gap-2">
               <button onClick={handleSaveCredential} className="flex-1 py-3.5 bg-blue-600 text-white font-black rounded-xl text-xs uppercase tracking-widest">更新</button>

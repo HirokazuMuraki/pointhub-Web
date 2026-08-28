@@ -29,10 +29,16 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
     return svcName?.includes("アプリメンバーズ") === true;
   };
 
+  const isMakeShopService = (svcName: string) => {
+    return svcName?.includes("MakeShop") === true || svcName?.includes("メイクセレクト") === true || svcName?.toLowerCase().includes("makeshop") === true;
+  };
+
   // 外部APIから最新ポイントを取得してDBに同期する処理
   const syncToDB = useCallback(async (cred: any) => {
     if (!cred || cred.serviceName.includes("ダミー")) return;
     try {
+      let latestBalance: number | null = null;
+
       if (isAppMembersService(cred.serviceName)) {
         // ■ アプリメンバーズの同期処理
         const { data } = await client.queries.getAppMembersPoints({
@@ -40,11 +46,16 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
         });
         if (data) {
           const res = typeof data === 'string' ? JSON.parse(data) : data;
-          const latestBalance = res.point ?? res.points ?? 0;
-          await client.models.UserServiceCredential.update({
-            id: cred.id,
-            dummyBalance: latestBalance
-          });
+          latestBalance = typeof res.point === 'number' ? res.point : (typeof res.points === 'number' ? res.points : null);
+        }
+      } else if (isMakeShopService(cred.serviceName)) {
+        // ■ MakeShopの同期処理
+        const { data } = await client.queries.getMakeshopPoints({
+          mailaddress: cred.loginId
+        });
+        if (data) {
+          const res = typeof data === 'string' ? JSON.parse(data) : data;
+          latestBalance = typeof res.point === 'number' ? res.point : (typeof res.points === 'number' ? res.points : null);
         }
       } else {
         // ■ ショップサーブの同期処理
@@ -57,12 +68,16 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
         });
         if (data) {
           const res = typeof data === 'string' ? JSON.parse(data) : data;
-          const latestBalance = res.point ?? res.points ?? 0;
-          await client.models.UserServiceCredential.update({
-            id: cred.id,
-            dummyBalance: latestBalance
-          });
+          latestBalance = typeof res.point === 'number' ? res.point : (typeof res.points === 'number' ? res.points : null);
         }
+      }
+
+      // 値が取得できており、かつ現在のDB値と変更がある場合のみDB更新（無駄なループ・チラつき防止）
+      if (latestBalance !== null && latestBalance !== cred.dummyBalance) {
+        await client.models.UserServiceCredential.update({
+          id: cred.id,
+          dummyBalance: latestBalance
+        });
       }
     } catch (e) {
       console.error(`${cred.serviceName} の同期失敗:`, e);
@@ -109,9 +124,11 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
 
       const isFromDummy = fromCred.serviceName.includes("ダミー");
       const isFromAppMembers = isAppMembersService(fromCred.serviceName);
+      const isFromMakeShop = isMakeShopService(fromCred.serviceName);
 
       const isToDummy = toCred.serviceName.includes("ダミー");
       const isToAppMembers = isAppMembersService(toCred.serviceName);
+      const isToMakeShop = isMakeShopService(toCred.serviceName);
 
       // --- ステップ1: 交換元 (FROM) からポイントを引き落とす ---
       if (!isFromDummy) {
@@ -126,6 +143,17 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
           if (errors) throw new Error(errors[0].message);
           const res = typeof opResult === 'string' ? JSON.parse(opResult) : opResult;
           if (!res?.success) throw new Error(res?.message || "アプリメンバーズでの減算に失敗しました。");
+        } else if (isFromMakeShop) {
+          // ■ MakeShopから減算 (type: 2 / 減算)
+          const { data: opResult, errors } = await client.mutations.operateMakeshopPoints({
+            mailaddress: fromCred.loginId,
+            amount: val,
+            type: 2, // 2: 減算
+            description: `PH-Exchange-Out:${trackingNumber}`
+          });
+          if (errors) throw new Error(errors[0].message);
+          const res = typeof opResult === 'string' ? JSON.parse(opResult) : opResult;
+          if (!res?.success) throw new Error(res?.message || "MakeShopでの減算に失敗しました。");
         } else {
           // ■ ショップサーブから減算
           const info = getSvcInfo(fromCred.serviceId);
@@ -161,6 +189,17 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
           if (errors) throw new Error(errors[0].message);
           const res = typeof opResult === 'string' ? JSON.parse(opResult) : opResult;
           if (!res?.success) throw new Error(res?.message || "アプリメンバーズでの加算に失敗しました。");
+        } else if (isToMakeShop) {
+          // ■ MakeShopへ加算 (type: 1 / 加算)
+          const { data: opResult, errors } = await client.mutations.operateMakeshopPoints({
+            mailaddress: toCred.loginId,
+            amount: val,
+            type: 1, // 1: 加算
+            description: `PH-Exchange-In:${trackingNumber}`
+          });
+          if (errors) throw new Error(errors[0].message);
+          const res = typeof opResult === 'string' ? JSON.parse(opResult) : opResult;
+          if (!res?.success) throw new Error(res?.message || "MakeShopでの加算に失敗しました。");
         } else {
           // ■ ショップサーブへ加算
           const info = getSvcInfo(toCred.serviceId);
@@ -200,6 +239,7 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
         try {
           const isFromDummy = fromCred.serviceName.includes("ダミー");
           const isFromAppMembers = isAppMembersService(fromCred.serviceName);
+          const isFromMakeShop = isMakeShopService(fromCred.serviceName);
 
           if (!isFromDummy) {
             if (isFromAppMembers) {
@@ -208,6 +248,14 @@ export const PointExchange = ({ client, userEmail, styles, services, setActiveTa
                 mailaddress: fromCred.loginId,
                 amount: val,
                 type: 1, 
+                description: `Rollback-Exchange-Error`
+              });
+            } else if (isFromMakeShop) {
+              // MakeShopへ元のポイントを払い戻し (type: 1 / 加算)
+              await client.mutations.operateMakeshopPoints({
+                mailaddress: fromCred.loginId,
+                amount: val,
+                type: 1,
                 description: `Rollback-Exchange-Error`
               });
             } else {
