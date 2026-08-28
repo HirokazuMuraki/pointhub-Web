@@ -47,9 +47,17 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
     return { shopId: settings?.shopId, masterAuthKey: settings?.authKey };
   }, [services]);
 
-  const isAppMembersService = (svcName: string) => {
-    return svcName?.includes("アプリメンバーズ") === true;
-  };
+  const getServiceType = useCallback((cred: any) => {
+    const name = (cred?.serviceName || "").toLowerCase();
+    const svcMaster = services?.find((s: any) => s.id === cred?.serviceId);
+    const masterName = (svcMaster?.name || "").toLowerCase();
+    const provider = (svcMaster?.provider || "").toLowerCase();
+
+    if (name.includes("ダミー") || masterName.includes("ダミー")) return "dummy";
+    if (name.includes("makeshop") || masterName.includes("makeshop") || provider.includes("makeshop")) return "makeshop";
+    if (name.includes("アプリメンバーズ") || masterName.includes("アプリメンバーズ") || provider.includes("appmembers")) return "appmembers";
+    return "shopserve";
+  }, [services]);
 
   const fetchGifts = async () => {
     try {
@@ -123,46 +131,50 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
 
       if (balanceAfter < 0) throw new Error("ポイント残高が不足しています。");
 
-      const isDummy = cred.serviceName.includes("ダミー");
-      const isAppMembers = isAppMembersService(cred.serviceName);
+      const serviceType = getServiceType(cred);
 
-      // 1. ポイント減算
-      if (!isDummy) {
-        if (isAppMembers) {
-          // ■ アプリメンバーズ用ポイント減算APIの呼び出し
-          // ※仕様PDFより、減算時は type: 2 / 減算値は正の値(ポイント数)を指定します
-          const { data: opResult, errors: opErrors } = await client.mutations.operateAppMembersPoints({
-            mailaddress: cred.loginId,
-            amount: latestGift.pointCost,
-            type: 2, // 2: 減算
-            description: `PointHub-Gift:${trackingNumber}`
-          });
-          
-          if (opErrors) throw new Error(opErrors[0].message);
-          const res = typeof opResult === 'string' ? JSON.parse(opResult) : opResult;
-          if (!res?.success) throw new Error(res?.message || "アプリメンバーズでのポイント減算に失敗しました。");
-        } else {
-          // ■ ショップサーブ用ポイント減算API
-          const info = getSvcInfo(cred.serviceId);
-          const { data: opResult } = await client.mutations.operateShopservePoints({
-            accountId: cred.loginId,
-            shopId: info?.shopId,
-            authKey: info?.masterAuthKey || cred.password,
-            amount: -latestGift.pointCost,
-            note: `PointHub-Gift:${trackingNumber}`
-          });
-          if (!opResult?.success) throw new Error(opResult?.message || "ショップサーブポイントの減算に失敗しました。");
-        }
+      // 1. ポイント減算処理
+      if (serviceType === "makeshop") {
+        const { data: opResult, errors: opErrors } = await client.mutations.operateMakeshopPoints({
+          memberId: cred.loginId,
+          amount: Number(latestGift.pointCost),
+          type: 2 as any,
+          description: `PointHub-Gift:${trackingNumber}`
+        });
+        if (opErrors && opErrors.length > 0) throw new Error(opErrors[0].message);
+        const res = typeof opResult === 'string' ? JSON.parse(opResult) : opResult;
+        if (res && res.success === false) throw new Error(res?.message || "MakeShopでのポイント減算に失敗しました。");
+      } else if (serviceType === "appmembers") {
+        const { data: opResult, errors: opErrors } = await client.mutations.operateAppMembersPoints({
+          mailaddress: cred.loginId,
+          amount: Number(latestGift.pointCost),
+          type: 2,
+          description: `PointHub-Gift:${trackingNumber}`
+        });
+        if (opErrors && opErrors.length > 0) throw new Error(opErrors[0].message);
+        const res = typeof opResult === 'string' ? JSON.parse(opResult) : opResult;
+        if (res && res.success === false) throw new Error(res?.message || "アプリメンバーズでのポイント減算に失敗しました。");
+      } else if (serviceType === "shopserve") {
+        const info = getSvcInfo(cred.serviceId);
+        const { data: opResult } = await client.mutations.operateShopservePoints({
+          accountId: cred.loginId,
+          shopId: info?.shopId,
+          authKey: info?.masterAuthKey || cred.password,
+          amount: -Number(latestGift.pointCost),
+          note: `PointHub-Gift:${trackingNumber}`
+        });
+        if (opResult && opResult.success === false) throw new Error(opResult?.message || "ショップサーブポイントの減算に失敗しました。");
       }
+      
       isPointDeducted = true;
 
-      // 2. 残高更新
+      // 2. 残高更新（ローカル表示用）
       await client.models.UserServiceCredential.update({ id: cred.id, dummyBalance: balanceAfter });
 
       let gifteeUrl = "";
       let gifteeOrderId = "";
 
-      // 3. ギフト種別ごとの処理
+      // 3. gifteeの場合はコード発行を先に実施
       if (selectedGift._type === 'giftee') {
         const targetProductId = latestGift.giftCode || latestGift.brandProductId;
         const { data: gifteeResult } = await client.queries.issueGifteeTicket({
@@ -176,35 +188,19 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
           balanceAfter: balanceAfter
         });
         
-        // Lambdaからエラーが返った、または正常終了なのにURLが取得出来なかった場合は処理を中断して例外を投げる
         if (gifteeResult?.success && gifteeResult.url) {
           gifteeUrl = gifteeResult.url;
           gifteeOrderId = gifteeResult.orderId || "";
         } else {
-          const errMsg = gifteeResult?.message || "デジタルギフト券面の発行に必要なURLの取得に失敗しました。";
-          throw new Error(errMsg);
+          throw new Error(gifteeResult?.message || "デジタルギフト券面の発行に失敗しました。");
         }
       } else {
+        // 在庫減算
         await client.models.GiftMaster.update({ id: latestGift.id, stock: latestGift.stock - 1 });
-        
-        await client.queries.sendEmail({
-          to: userEmail,
-          subject: "GIFT_ORDER",
-          body: JSON.stringify({
-            userName: shippingInfo.name,
-            trackingNumber: trackingNumber,
-            fromService: cred.serviceName,
-            toService: latestGift.name,
-            points: latestGift.pointCost,
-            balance: balanceAfter,
-            shippingZip: shippingInfo.zip,
-            shippingAddress: shippingInfo.address,
-            shippingTel: shippingInfo.tel
-          })
-        });
       }
 
-      // 4. 履歴作成
+      // 4. 【最優先】注文・履歴データ（GiftOrder）の作成
+      // メール送信より前に保存することで「ポイント引かれたのに履歴/注文管理にない」事故を防ぐ
       await client.models.GiftOrder.create({
         userEmail, giftId: latestGift.id, giftName: latestGift.name,
         pointSpent: latestGift.pointCost, dummyBalance: balanceAfter,
@@ -216,6 +212,30 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
         shippingTel: shippingInfo.tel || "000-0000-0000",
         gifteeUrl, gifteeOrderId, trackingNumber
       });
+
+      // 5. 受付メールの送信（非同期通知）
+      if (selectedGift._type === 'master') {
+        try {
+          await client.queries.sendEmail({
+            to: userEmail,
+            subject: "GIFT_ORDER",
+            body: JSON.stringify({
+              userName: shippingInfo.name,
+              trackingNumber: trackingNumber,
+              fromService: cred.serviceName,
+              toService: latestGift.name,
+              points: latestGift.pointCost,
+              balance: balanceAfter,
+              shippingZip: shippingInfo.zip,
+              shippingAddress: shippingInfo.address,
+              shippingTel: shippingInfo.tel
+            })
+          });
+        } catch (emailErr) {
+          // メール送信エラーが起きても注文データは既に作成済みのため処理は正常継続する
+          console.error("注文完了メール送信失敗 (注文データは保存済み):", emailErr);
+        }
+      }
 
       setShowSuccessModal({
         trackingNumber,
@@ -230,48 +250,47 @@ export const ExchangeWrapper = ({ client, userEmail, services, styles, setActive
       await Promise.all([fetchGifts(), fetchCredentials()]);
 
     } catch (err: any) {
-      // すでに外部ポイントが減算された後にエラーが発生した場合、安全に払い戻し（相殺）ロールバックを行う
+      // ロールバック処理
       if (isPointDeducted && cred && selectedGift) {
         try {
-          // ローカル表示上の残高を元に戻す
           const { data: currentCred } = await client.models.UserServiceCredential.get({ id: cred.id });
           if (currentCred) {
             const restoredBalance = (currentCred.dummyBalance || 0) + selectedGift.pointCost;
             await client.models.UserServiceCredential.update({ id: cred.id, dummyBalance: restoredBalance });
           }
 
-          const isDummy = cred.serviceName.includes("ダミー");
-          const isAppMembers = isAppMembersService(cred.serviceName);
+          const serviceType = getServiceType(cred);
 
-          if (!isDummy) {
-            if (isAppMembers) {
-              // ■ アプリメンバーズへのポイント払い戻し (1:加算)
-              await client.mutations.operateAppMembersPoints({
-                mailaddress: cred.loginId,
-                amount: selectedGift.pointCost,
-                type: 1, // 1: 加算
-                description: `Rollback-Gift-Error`
-              });
-            } else {
-              // ■ ショップサーブの実ポイントを加算して相殺
-              const info = getSvcInfo(cred.serviceId);
-              await client.mutations.operateShopservePoints({
-                accountId: cred.loginId,
-                shopId: info?.shopId,
-                authKey: info?.masterAuthKey || cred.password,
-                amount: selectedGift.pointCost, // プラス（加算）
-                note: `Rollback-Gift-Error`
-              });
-            }
+          if (serviceType === "makeshop") {
+            await client.mutations.operateMakeshopPoints({
+              memberId: cred.loginId,
+              amount: Number(selectedGift.pointCost),
+              type: 1 as any,
+              description: `Rollback-Gift-Error`
+            });
+          } else if (serviceType === "appmembers") {
+            await client.mutations.operateAppMembersPoints({
+              mailaddress: cred.loginId,
+              amount: Number(selectedGift.pointCost),
+              type: 1,
+              description: `Rollback-Gift-Error`
+            });
+          } else if (serviceType === "shopserve") {
+            const info = getSvcInfo(cred.serviceId);
+            await client.mutations.operateShopservePoints({
+              accountId: cred.loginId,
+              shopId: info?.shopId,
+              authKey: info?.masterAuthKey || cred.password,
+              amount: Number(selectedGift.pointCost),
+              note: `Rollback-Gift-Error`
+            });
           }
         } catch (rollbackErr) {
-          console.error("ポイントの払い戻し（ロールバック）処理自体に失敗しました:", rollbackErr);
+          console.error("ポイントの払い戻し（ロールバック）処理に失敗しました:", rollbackErr);
         }
       }
 
-      // エラー時にモーダルを閉じる
       setSelectedGift(null);
-
       await showAlert(`交換エラー: ${err.message}`);
       fetchCredentials();
     } finally {
